@@ -5,3 +5,4 @@ build/
 cmake_install.cmake
 cmake_log.txt
 screenshot/
+.DS_Store

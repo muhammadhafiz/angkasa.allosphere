@@ -4,3 +4,4 @@ Makefile
 build/
 cmake_install.cmake
 cmake_log.txt
+screenshot/

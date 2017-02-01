@@ -79,11 +79,10 @@ public:
     SearchPaths sp;
 		// sp.addSearchPath("/Users/hafiz/code/allo_SG/src/data/samples/");
 		sp.addSearchPath(".", true);
-		// sp.addSearchPath("/Users/hafiz/Documents/thesis/media/samples/4chan/");
     // string filename = "Fireworks_4chan_stretch.wav";
     // string filename = "Fireworks_4chan_48.wav";
-		string filename = "Fireworks_0.1_constantStretch.wav";
-		// string filename = "Fireworks_SGStretch_10secs.wav";
+		// string filename = "Fireworks_0.1_constantStretch.wav";
+		string filename = "Fireworks_SGStretch_10secs.wav";
 		// string filename = "crossSynth_organFireworks.wav";
 		// string filename = "crossSynth_chinookFireworks.wav";
 		string fullPath = sp.find(filename).filepath();
@@ -123,7 +122,6 @@ public:
   }
 
   void onCreate(const ViewpointWindow& w){
-
 		loadShaders();
   }
 
@@ -165,7 +163,6 @@ public:
     mTexture.unbind(0);
 		glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
 		glDisable(GL_POINT_SMOOTH);
-    // g.pointSize(6.0);
     s->end();
     mTexture.quad(g, 1, 1, 3, 0);
 	}
@@ -181,7 +178,7 @@ public:
 		float * ambiChans = spatializer->ambiChans();
 
 		int framesRead = mSoundFile->read(readBuffer, AUDIO_BLOCK_SIZE);
-		// std::cout << framesRead << '\n';
+
 		if (framesRead != AUDIO_BLOCK_SIZE) {
 			// TODO Handle overrun
 		}
@@ -211,7 +208,6 @@ public:
   			obj->mRmsCounter++;
   			for(int elevIndex = 0; elevIndex < SPATIAL_SAMPLING; elevIndex++) {
   				float elev = M_PI/2.0 - (M_PI * (elevIndex + 0.5)/(float) SPATIAL_SAMPLING);
-  				// std::cout << elev << '\n';
   				float cosElev = COS(elev);
   				for(int azimuthIndex = 0; azimuthIndex < SPATIAL_SAMPLING; azimuthIndex++) {
   					float azimuth = M_2PI * (azimuthIndex + 0.5)/(float) SPATIAL_SAMPLING;
@@ -238,7 +234,7 @@ public:
   					}
 
   						if (obj->params.mGrayscale) {
-  							*rmsBuffer++ = rmsIntensity; ///
+  							*rmsBuffer++ = rmsIntensity;
   							*rmsBuffer++ = rmsIntensity;
   							*rmsBuffer++ = rmsIntensity;
   						}
@@ -253,34 +249,11 @@ public:
   								g = 2 * ( 1- rmsIntensity);
   								b = 0.0;
   							}
-  							*rmsBuffer++ = sqrt(r); ///
+  							*rmsBuffer++ = sqrt(r);
   							*rmsBuffer++ = sqrt(g);
   							*rmsBuffer++ = sqrt(b);
   						}
 
-
-							// //map color to hue, so a continuous spectrum based on amplitude of grain
-							//
-  						// if (obj->params.mGrayscale) {
-  						// 	*rmsBuffer++ = rmsIntensity; ///
-  						// 	*rmsBuffer++ = rmsIntensity;
-  						// 	*rmsBuffer++ = rmsIntensity;
-  						// }
-              // else {
-  						// 	float r,g,b;
-  						// 	if (rmsIntensity <= 0.5) { ///
-							// 		r = 0.0;
-  						// 		g = 2 * rmsIntensity;
-  						// 		b = 2 * (0.5 - rmsIntensity);
-  						// 	} else {
-  						// 		r = 2 * (rmsIntensity - 0.5);
-  						// 		g = 2 * ( 1- rmsIntensity);
-  						// 		b = 0.0;
-  						// 	}
-  						// 	*rmsBuffer++ = sqrt(r); ///
-  						// 	*rmsBuffer++ = sqrt(g);
-  						// 	*rmsBuffer++ = sqrt(b);
-  						// }
   //						obj->mState.rmsTexture[azimuthIndex * SPATIAL_SAMPLING + elevIndex] = obj->mRmsAccum[azimuthIndex * SPATIAL_SAMPLING + elevIndex];
 
   //						obj->mState.peakTexture[azimuthIndex * SPATIAL_SAMPLING + elevIndex] = obj->mPeakHold[azimuthIndex * SPATIAL_SAMPLING + elevIndex];
@@ -356,24 +329,3 @@ private:
 int main(){
 	MyApp().start();
 }
-
-
-//TODO:
-//- extract 1 grain, and encode into higher order. play only that grain
-//-- extract another grain from a different position of same recording, and stretch them (or phase shift) at a different rate
-//-- real time TPV
-//-- extract 1 grain from another recording, and mix together
-//- extract one section of the space, and only synthesize the grains in that sampleSpace
-//-- slowly reduce the section of the space, until only 1 grain is heard (torch light)
-//- RMS cross synthesis
-//- Spectral cross synthesis
-//-- port from ofx. trigger multiple grains in one direction
-//comp: start with 1 grain from one position, triggered over and over again
-// spatially morph the sound to include other grains from other positions
-// trigger a granulation engine, with corresponding azimuth elevation values
-// start increasing grain width, and overlapping
-//constant stretch, from 1x, to reverse slow 0.01x.
-//split the space up into 2 halves, and twist around axis based on envelope of signal
-//each grain is then phase shifted in time, to create a "spatial delay"/ video screen tearinge-esque(?)
-//red/blue separation is based on amplitude of signal, or spatial phase shift of grains
-//spatialization: mix ambi and vbap? so that only a minimum number of speakers are used to play sounds from one direction?

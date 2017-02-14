@@ -2,7 +2,8 @@
 
 #include <allocore/al_Allocore.hpp>
 #include <allocore/types/al_SingleRWRingBuffer.hpp>
-#include <alloutil/al_OmniStereoGraphicsRenderer.hpp>
+// #include <alloutil/al_OmniStereoGraphicsRenderer.hpp>
+#include "../OmniRender.hpp"
 #include "Cuttlebone/Cuttlebone.hpp"
 #include "Gamma/scl.h"
 
@@ -10,6 +11,9 @@
 #include "allospherespeakerlayouts.h"
 
 #include "../state.hpp"
+
+#include "allocore/graphics/al_Shader.hpp"
+#include "alloutil/al_ShaderManager.hpp"
 
 #define AUDIO_BLOCK_SIZE 512
 
@@ -51,10 +55,16 @@ public:
 
 	AmbiMeterRenderer() :
 	    mMeterValues(3, AlloFloat32Ty, SPATIAL_SAMPLING, SPATIAL_SAMPLING),
-	    mTextureBuffer(((SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * 4) + 1 ) * sizeof(float) )
+	    mTextureBuffer(((SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * 4) + 1 ) * sizeof(float) ),
+	    mSpriteTex(16,16, Graphics::LUMINANCE, Graphics::FLOAT)
 	{
-		addSphereWithTexcoords(mMesh, 1, 128);
-		addCube(mFrontalMesh, false, 0.1);
+		addSphereWithTexcoords(mMesh, 1, SPATIAL_SAMPLING);
+		mMesh.primitive(Graphics::POINTS);
+
+		addSphereWithTexcoords(mWireframeMesh, 1, SPATIAL_SAMPLING);
+		mWireframeMesh.primitive(Graphics::LINES);
+
+		gaussianSprite(mSpriteTex);
 
 //		mMesh.vertex(-10,-10,-10); mMesh.color(RGB(1,0,0)); mMesh.texCoord(0, 0);
 //	    mMesh.vertex( 10,-10,-10); mMesh.color(RGB(1,1,0)); mMesh.texCoord(1, 0);
@@ -75,7 +85,37 @@ public:
 		params.mSphere = true;
 	}
 
+	// Create a Gaussian "bump" function to use for the sprite
+	void gaussianSprite(Texture &t){
+		int Nx = t.width();
+		int Ny = t.height();
+		float * pixels = t.data<float>();
+
+		for(int j=0; j<Ny; ++j)
+		{
+			float y = float(j)/(Ny-1)*2-1;
+			for(int i=0; i<Nx; ++i)
+			{
+				float x = float(i)/(Nx-1)*2-1;
+				float m = exp(-3*(x*x + y*y));
+				pixels[j*Nx + i] = m;
+			}
+		}
+	}
+
+	// Load shaders whenever shaderManager polls
+	virtual void loadShaders(){
+		shaderManager.vertLibCode = "#version 120\n";
+		shaderManager.vertLibCode.append("#define OMNI 1\n" + mOmni.glsl());
+		shaderManager.addShaderFile("point", "point.vert", "point.frag");
+	}
+
 	virtual void onAnimate(al_sec dt) override {
+		static bool initd = false;
+		if(shaderManager.poll() || !initd){
+			loadShaders();
+			initd = true;
+		}
 		// light.pos(nav().pos());
 		pose = nav();
 		// std::cout << dt << std::endl;
@@ -83,20 +123,12 @@ public:
 
 	virtual void onDraw(Graphics &g) override {
 
-//		g.polygonMode(Graphics::LINE);
-		State s;
-//		light();
-		omni().uniforms(shader());
-	    omni().clearColor() = Color(0.4);
-
-		shader().uniform("lighting", 0.1);
-	    shader().uniform("texture", 0.9);
-
+		State state;
 		bool newState = false;
-		while (mStateTaker.get(s) > 0) { newState = true;} // Pop all states in queue
+		while (mStateTaker.get(state) > 0) { newState = true;} // Pop all states in queue
 
 		if(newState) {
-			memcpy(mMeterValues.data.ptr, s.rmsTexture,
+			memcpy(mMeterValues.data.ptr, state.rmsTexture,
 			       SPATIAL_SAMPLING *SPATIAL_SAMPLING * 3 * sizeof(float));
 			mTexture.submit(mMeterValues, true);
 
@@ -104,27 +136,50 @@ public:
 			// std::cout << "New State" << std::endl;
 		}
 
-		g.polygonMode(Graphics::FILL);
-		g.antialiasing(Graphics::NICEST);
-		g.depthTesting(true);
-		g.blending(true);
+//		g.polygonMode(Graphics::LINE);
+//		light();
+		shader().begin();
+		omni().uniforms(shader());
+	    // omni().clearColor() = Color(0.4);
 
-//			mTexture.filter(Texture::LINEAR);
-		if (params.mSphere) {
-			mTexture.bind();
-			g.draw(mMesh);
-			mTexture.unbind();
-			g.pushMatrix();
-			g.translate(1.5, 0, 0);
-			g.draw(mFrontalMesh);
-			g.popMatrix();
-		} else {
-			mTexture.quad(g, 2, 2, -2, -1);
-			g.pushMatrix();
-			g.rotate(180, 0, 1, 0);
-			mTexture.quad(g, 2, 2, -2, -1);
-			g.popMatrix();
-		}
+		shader().uniform("lighting", 0.0);
+	    shader().uniform("texture", 0.0);
+
+		g.blendAdd();
+		// Draw wireframe mesh
+		g.lineWidth(0.1);
+		g.color(1,1,1,0.25);
+		g.draw(mWireframeMesh);
+		shader().end();
+
+		// // Read the texture buffer
+		// int bytesToRead = SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float);
+		// while(mTextureBuffer.readSpace() >= bytesToRead) {
+		// 	mTextureBuffer.read(mMeterValues.data.ptr, bytesToRead);
+		// 	mTexture.submit(mMeterValues, true);
+		// 	mTexture.filter(Texture::LINEAR);
+		// }
+
+		glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+		glEnable(GL_POINT_SMOOTH);
+		glEnable(GL_POINT_SPRITE);
+		glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
+
+		ShaderProgram* s = shaderManager.get("point");
+		s->begin();
+		omni().uniforms(*s);
+		s->uniform("texture0", 0);
+		s->uniform("texture1", 1);
+		mTexture.bind(0); //binds to textureID
+		mSpriteTex.bind(1);
+		g.draw(mMesh);
+		mSpriteTex.unbind(1);
+		mTexture.unbind(0);
+		s->end();
+
+		glDisable(GL_POINT_SPRITE);
+
+
 	}
 
 	virtual void start() {
@@ -146,12 +201,15 @@ public:
 
 private:
 	Mesh mMesh;
-	Mesh mFrontalMesh;
+	Mesh mWireframeMesh;
 	Texture mTexture;
+	Texture mSpriteTex;
 	Array mMeterValues;
+	Array mNewRmsMeterValues;
 	SingleRWRingBuffer mTextureBuffer;
+	ShaderManager shaderManager;
 
-	Light light;
+	// Light light;
 
 	cuttlebone::Taker<State> mStateTaker;
 

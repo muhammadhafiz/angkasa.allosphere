@@ -9,6 +9,7 @@
 
 #include "soundfilebuffered.hpp"
 #include "allosphere/allospherespeakerlayouts.h"
+#include "allosphere/allospherespeakerlayouts.cpp"
 #include "state.hpp"
 
 #include "allocore/graphics/al_Shader.hpp"
@@ -59,7 +60,7 @@ public:
 		mNewRmsMeterValues(3, AlloFloat32Ty, SPATIAL_SAMPLING, SPATIAL_SAMPLING),
 		mTextureBuffer(((SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * 4) + 1 ) * sizeof(float)),
 		mSpriteTex(16,16, Graphics::LUMINANCE, Graphics::FLOAT),
-		mStateMaker("127.0.0.1")
+		mStateMaker(defaultBroadcastIP())
 		// mStateMaker("192.168.10.255")
 		{
 			addSphereWithTexcoords(mMesh, 1, SPATIAL_SAMPLING);
@@ -100,6 +101,7 @@ public:
 
 			// Choice of Allosphere Speker Layouts
 			SpeakerLayout speakerLayout = HeadsetSpeakerLayout();
+			if(sim()) speakerLayout = AllosphereSpeakerLayouts::threeRings54();
 
 			// Create spatializer
 			spatializer = new AmbisonicsSpatializer(speakerLayout, 3, 1);
@@ -113,8 +115,33 @@ public:
 				mRmsAccum[i] = 0.0;
 			}
 
-			initAudio(mSoundFile0->frameRate(), AUDIO_BLOCK_SIZE, 2, 0);
+			if(sim()){
+				initAudio(mSoundFile0->frameRate(), AUDIO_BLOCK_SIZE, 60, 60);
+				AudioDevice indev("ECHO X5", AudioDevice::INPUT);
+				AudioDevice outdev("ECHO X5", AudioDevice::OUTPUT);
+				indev.print();
+				outdev.print();
+				audioIO().deviceIn(indev);
+				audioIO().deviceOut(outdev);
+				// audioIO().channelsOut(60);
+				// audioIO().channelsIn(60);
+				// audioIO().callback = al::AppAudioCB;
+				// audioIO().user(this);
+				// audioIO().framesPerSecond(mSoundFile0->frameRate());
+				// audioIO().framesPerBuffer(AUDIO_BLOCK_SIZE);
+			} else initAudio(mSoundFile0->frameRate(), AUDIO_BLOCK_SIZE, 2, 0);
+
 			mStateMaker.start();
+		}
+
+		bool sim(){
+			std::string hostname = Socket::hostName();
+			return (hostname == "gr01" || hostname == "audio.10g");
+		}
+
+		const char* defaultBroadcastIP(){
+			if(sim()) return "192.168.10.255";
+			else return "127.0.0.1";
 		}
 
 		// Draw waveform
@@ -274,7 +301,7 @@ public:
 			float *rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
 
 			for (int frame = 0; frame < numFrames; frame++) { // For each frame in the buffer
-				// mRmsCounter++;
+				mRmsCounter++;
 				float maxVal= 0;
 
 				for(int elevIndex = 0; elevIndex < SPATIAL_SAMPLING; elevIndex++) { // For sampled elevation
@@ -432,15 +459,16 @@ public:
 				w_1+=4; x_1+=4; y_1+=4; z_1+=4;
 				w_r+=4; x_r+=4; y_r+=4; z_r+=4;
 
-				// if (mRmsCounter == mRmsSamples) {
-				// 	mRmsCounter = 0;
-				// 	rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
-				// 	memcpy(mState.rmsTexture, rmsBuffer, SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float));
-				// 	mStateMaker.set(mState);
-				// }
+				if (mRmsCounter == mRmsSamples) {
+					mRmsCounter = 0;
+					rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
+					memcpy(mState.rmsTexture, rmsBuffer, SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float));
+					mStateMaker.set(mState);
+				}
 				active_STgrains = 0;
 			} // End of audio frames
 			spatializer->finalize(io);
+			
 		} // End of onSound
 
 
@@ -505,13 +533,16 @@ public:
 	int main(int argc, char *argv[])
 	{			float maxVal= 0;
 
-		parameterMIDI.init();
+		Angkasa app;
+
+		int midiDevice = 0;
+		if(app.sim()) midiDevice = 4;
+		parameterMIDI.init(midiDevice, false);
 		parameterMIDI.connectControl(Slider0, 0, 1);
 		parameterMIDI.connectControl(Slider1, 1, 1);
 		parameterMIDI.connectControl(Slider2, 2, 1);
 		parameterMIDI.connectControl(Slider7, 7, 1);
 		parameterMIDI.connectControl(recButton, 45, 1);
 
-		Angkasa app;
 		app.start();
 	}

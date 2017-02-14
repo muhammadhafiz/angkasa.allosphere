@@ -6,7 +6,7 @@
 
 struct State {
 	float rmsTexture[SPATIAL_SAMPLING*SPATIAL_SAMPLING*3];
-	float peakTexture[SPATIAL_SAMPLING*SPATIAL_SAMPLING*3];
+	// float peakTexture[SPATIAL_SAMPLING*SPATIAL_SAMPLING*3];
 };
 
 

@@ -314,7 +314,7 @@ public:
 
 			// int numFrames = io.framesPerBuffer();
 			int numFrames = Slider6.get();
-			assert(AUDIO_BLOCK_SIZE == numFrames);
+			// assert(AUDIO_BLOCK_SIZE == numFrames);
 
 			int framesRead[2];
 			// int grainSize = AUDIO_BLOCK_SIZE/2;
@@ -548,7 +548,7 @@ public:
 		Angkasa app;
 
 		int midiDevice = 0;
-		if(app.sim()) midiDevice = 4;
+		if(app.sim()) midiDevice = 3;
 		parameterMIDI.init(midiDevice, false);
 		parameterMIDI.connectControl(Slider0, 0, 1);
 		parameterMIDI.connectControl(Slider1, 1, 1);

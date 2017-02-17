@@ -45,28 +45,23 @@ class MeterParams {
 public:
 	MeterParams() :
 	mSphere(true),
-	mDecibel(false),
 	mGrayscale(false),
-	mRmsGain(1.0), //20.0
+	mMasterGain(0),
+	mRmsGain(1.0),
 	mCrossFade(0.0),
-	mDbRange(80.0),
 	mCarrierFile(0),
-	mModulatorFile(1),
-	mMasterGain(0)
+	mModulatorFile(1)
 	{}
-
 		bool mSphere;
-		bool mDecibel;
 		bool mGrayscale;
 
+		float mMasterGain;
 		float mRmsGain;
 		float mCrossFade;
-		double mDbRange;
 
 		int mCarrierFile;
 		int mModulatorFile;
 
-		float mMasterGain;
 	};
 
 	class Angkasa : public App
@@ -78,7 +73,6 @@ public:
 		mTextureBuffer(((SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * 4) + 1 ) * sizeof(float)),
 		mSpriteTex(16,16, Graphics::LUMINANCE, Graphics::FLOAT),
 		mStateMaker(defaultBroadcastIP())
-		// mStateMaker("192.168.10.255")
 		{
 			addSphereWithTexcoords(mMesh, 1, SPATIAL_SAMPLING);
 			mMesh.primitive(Graphics::POINTS);
@@ -94,7 +88,7 @@ public:
 			// Find Ambisonics files
 			SearchPaths sp;
 			sp.addSearchPath(".", true);
-			// 0 = carrier, i.e. source, 1 = modulator, i.e. temporal modifier
+			// 0 = carrier, i.e. source, 1 = modulator
 			filename[0] = "norm_organ.wav";
 			filename[1] = "norm_fireworks.wav";
 			filename[2] = "norm_insects.wav";
@@ -123,7 +117,7 @@ public:
 				}
 			} cout << endl;
 
-			// Choice of Allosphere Speker Layouts
+			// Choice of Allosphere Speaker Layouts
 			SpeakerLayout speakerLayout = HeadsetSpeakerLayout();
 			if(sim()) speakerLayout = AllosphereSpeakerLayouts::threeRings54();
 
@@ -147,22 +141,17 @@ public:
 				outdev.print();
 				audioIO().deviceIn(indev);
 				audioIO().deviceOut(outdev);
-				// audioIO().channelsOut(60);
-				// audioIO().channelsIn(60);
-				// audioIO().callback = al::AppAudioCB;
-				// audioIO().user(this);
-				// audioIO().framesPerSecond(mSoundFile0->frameRate());
-				// audioIO().framesPerBuffer(AUDIO_BLOCK_SIZE);
 			} else initAudio(mSoundFile[0]->frameRate(), AUDIO_BLOCK_SIZE, 2, 0);
-
 			mStateMaker.start();
 		}
 
+		// Check if using Allosphere
 		bool sim(){
 			std::string hostname = Socket::hostName();
 			return (hostname == "gr01" || hostname == "audio.10g");
 		}
 
+		// Broadcast to Allosphere or local IP
 		const char* defaultBroadcastIP(){
 			if(sim()) return "192.168.10.255";
 			else return "127.0.0.1";
@@ -171,10 +160,10 @@ public:
 		// Draw waveform
 		static void addWaveformDisplay(Mesh& m, float *buffer, float R, float G, float B) {
 			float bufferSize = AUDIO_BLOCK_SIZE;
-
 			int zoomOut = 2;  // # audio samples per OpenGL Mesh vertex
 			m.primitive(Graphics::LINE_STRIP);
 			int n = 0;  // current sample #
+
 			for (int i = 0; i < bufferSize / zoomOut; ++i) {
 				float max = -1, min = 1;
 				for (int j = 0; j < zoomOut; ++j) {
@@ -253,6 +242,7 @@ public:
 				cout << "Slider2 val: " << Slider2.get() << endl;
 				cout << "Slider7 val: " << Slider7.get() << endl;
 			}
+
 			// Master mix for playing different Ambi files
 			masterMix = Slider2.get();
 			if(masterMix < 0.5){
@@ -284,11 +274,12 @@ public:
 				mTexture.submit(mMeterValues, true);
 				mTexture.filter(Texture::LINEAR);
 			}
+
 			ShaderProgram* s = shaderManager.get("point");
 			s->begin();
 			s->uniform("texture0", 0);
 			s->uniform("texture1", 1);
-			mTexture.bind(0); //binds to textureID
+			mTexture.bind(0); // Binds to textureID
 			mSpriteTex.bind(1);
 			g.draw(mMesh);
 			mSpriteTex.unbind(1);
@@ -296,6 +287,7 @@ public:
 			mTexture.unbind(0);
 			s->end();
 
+			// Temporarily draw quad for texture
 			mTexture.quad(g, 1, 1, 3, 0);
 
 			// Draw waveform(s)
@@ -312,11 +304,15 @@ public:
 			spatializer->prepare();
 			float * ambiChans = spatializer->ambiChans();
 
-			// int numFrames = io.framesPerBuffer();
-			int numFrames = Slider6.get();
+			int numFrames = AUDIO_BLOCK_SIZE;
+			// int numFrames = Slider6.get();
 			// assert(AUDIO_BLOCK_SIZE == numFrames);
 
 			int framesRead[2];
+			float sqrt2 = 1.0/ sqrt(2.0);
+			float windowFunction[numFrames];
+			gam::tbl::hann(windowFunction, numFrames);
+
 			// int grainSize = AUDIO_BLOCK_SIZE/2;
 			// framesRead[0] = mSoundFile0->read(readBuffer[0], grainSize); io.buffersize());
 			framesRead[0] = mSoundFile[params.mCarrierFile]->read(readBuffer[0], numFrames);
@@ -325,12 +321,6 @@ public:
 				cout << "buffer overrun! framesRead[0]: " << framesRead[0] << " frames" << endl;
 				cout << "buffer overrun! framesRead[1]: " << framesRead[1] << " frames" << endl;
 			}
-
-			float windowFunction[numFrames];
-			gam::tbl::hann(windowFunction, numFrames);
-
-			float sqrt2 = 1.0/sqrt(2.0);
-			float reconstructAmbiNormFactor = SPATIAL_SAMPLING * SPATIAL_SAMPLING;
 
 			// Pointer for buffer 0
 			float *w_0 = readBuffer[0];
@@ -350,6 +340,7 @@ public:
 			float *y_r = reconstructAmbiBuffer + 2;
 			float *z_r = reconstructAmbiBuffer + 3;
 
+			// Pointer for output RMS
 			float *rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
 
 			for (int frame = 0; frame < numFrames; frame++) { // For each frame in the buffer
@@ -359,71 +350,73 @@ public:
 					float cosElev = COS(elev);
 					for(int azimuthIndex = 0; azimuthIndex < SPATIAL_SAMPLING; azimuthIndex++) { // For each sampled azimuth
 						float azimuth = M_2PI * (azimuthIndex + 0.5)/(float) SPATIAL_SAMPLING; // 0.10472 to 6.17847
-						int which_STgrain = azimuthIndex * SPATIAL_SAMPLING + elevIndex; // Current grain
+						int STgrain_index = azimuthIndex * SPATIAL_SAMPLING + elevIndex;
 						float STgrain_mix[AUDIO_BLOCK_SIZE];
-						float rmsIntensity;
+						float rmsScaled;
 						float r,g,b;
 						bool STgrain_ON;
 
 						// Calculate the STgrain for sample_0
-						float STgrain_0= (*w_0 * sqrt2)
-													 + (*x_0 * COS(azimuth) * cosElev)
-													 + (*y_0 * SIN(azimuth) * cosElev)
-													 + (*z_0 * SIN(elev));
+						float STgrain_0 = (*w_0 * sqrt2)
+													  + (*x_0 * COS(azimuth) * cosElev)
+													  + (*y_0 * SIN(azimuth) * cosElev)
+													  + (*z_0 * SIN(elev));
 
 						// Calculate the STgrain for sample_1
-						float STgrain_1= (*w_1 * sqrt2)
-													 + (*x_1 * COS(azimuth) * cosElev)
-													 + (*y_1 * SIN(azimuth) * cosElev)
-													 + (*z_1 * SIN(elev));
+						float STgrain_1 = (*w_1 * sqrt2)
+													  + (*x_1 * COS(azimuth) * cosElev)
+													  + (*y_1 * SIN(azimuth) * cosElev)
+													  + (*z_1 * SIN(elev));
 
 						// Accumulate STgrain^2 of each STgrain for sample_1 (for RMS)
-						crossSynth_RMSAccum[which_STgrain] += STgrain_1 * STgrain_1;
+						crossSynth_RMSAccum[STgrain_index] += STgrain_1 * STgrain_1;
 
 						// Calculate the interpolated RMS of each STgrain of sample_1
-						interp_crossSynth_RMS = ipl::linear((float) (frame)/ (numFrames-1), prev_crossSynth_RMS[which_STgrain], crossSynth_RMS[which_STgrain]);
+						interp_crossSynth_RMS = ipl::linear((float) (frame)/ (numFrames-1), prev_crossSynth_RMS[STgrain_index], crossSynth_RMS[STgrain_index]);
 
 						if(frame == numFrames-1){ // At the end of audio block
-							prev_crossSynth_RMS[which_STgrain] = crossSynth_RMS[which_STgrain];
-							crossSynth_RMS[which_STgrain] = sqrt(crossSynth_RMSAccum[which_STgrain]/ (float)numFrames);// * 1.2;
-							crossSynth_RMSAccum[which_STgrain]= 0.0;
+							prev_crossSynth_RMS[STgrain_index] = crossSynth_RMS[STgrain_index];
+							crossSynth_RMS[STgrain_index] = sqrt(crossSynth_RMSAccum[STgrain_index]/ (float)numFrames);// * 1.2;
+							crossSynth_RMSAccum[STgrain_index]= 0.0;
 						}
+						// STgrain_mix[frame] = STgrain_0;
 						STgrain_mix[frame] = (STgrain_0 * signal_mix[0])
 															 + (STgrain_1 * signal_mix[1])
 															 + (STgrain_0 * (interp_crossSynth_RMS* 4.0) * signal_mix[2]);
 
+
 						// Accumulate STgrain_mix^2
-						mRmsAccum[which_STgrain] += STgrain_mix[frame] * STgrain_mix[frame];
-						rmsIntensity = mRms[which_STgrain]* params.mRmsGain;
+						mRmsAccum[STgrain_index] += STgrain_mix[frame] * STgrain_mix[frame];
+						rmsScaled = mRms[STgrain_index] * params.mRmsGain;
 
 						rmsThreshold = Slider1.get();
-						if (rmsIntensity <= rmsThreshold) {
+						if (rmsScaled <= rmsThreshold) {
 							STgrain_ON = false;
 							r = 0.0;
-							g = 2 * rmsIntensity;
-							b = 2 * (rmsThreshold - rmsIntensity);
+							g = 2 * rmsScaled;
+							b = 2 * (rmsThreshold - rmsScaled);
 						} else {
 							STgrain_ON = true;
 							active_STgrains++;
-							r = 2 * (rmsIntensity - rmsThreshold);
-							g = 2 * ( 1- rmsIntensity);
+							r = 2 * (rmsScaled - rmsThreshold);
+							g = 2 * ( 1- rmsScaled);
 							b = 0.0;
 						}
 
-						// CAUTION: Careful when changing this: output is divided by active_STgrains
+						// Trigger STgrains based on conditionals, in this case, RMS threshold
 						if(STgrain_ON == true){
-							STslice[frame][which_STgrain] = STgrain_mix[frame] * windowFunction[frame];
+							STslice[frame][STgrain_index] = STgrain_mix[frame] * windowFunction[frame];
 						}else{
-							STslice[frame][which_STgrain] = 0.0;
+							STslice[frame][STgrain_index] = 0.0;
 						}
 
 						if(frame == numFrames-1){ // At the end of audio block (255/ 511 maybe?)
-							mRms[which_STgrain] = sqrt(mRmsAccum[which_STgrain] / (float) numFrames);
-							mRmsAccum[which_STgrain] = 0.0;
+							mRms[STgrain_index] = sqrt(mRmsAccum[STgrain_index] / (float) numFrames);
+							mRmsAccum[STgrain_index] = 0.0;
 
-							*rmsBuffer++ = sqrt(r); //rmsIntensity- rmsThreshold;
-							*rmsBuffer++ = sqrt(g); //rmsIntensity- rmsThreshold;
-							*rmsBuffer++ = sqrt(b); //rmsIntensity- rmsThreshold;
+							*rmsBuffer++ = sqrt(r); // rmsScaled- rmsThreshold;
+							*rmsBuffer++ = sqrt(g); // rmsScaled- rmsThreshold;
+							*rmsBuffer++ = sqrt(b); // rmsScaled- rmsThreshold;
 
 							int bytesToWrite = SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float);
 							if (mTextureBuffer.writeSpace() >= bytesToWrite) {
@@ -434,19 +427,19 @@ public:
 						}
 
 						// Project each grain on to corresponding direction
-						float W_reconstruct = STslice[frame][which_STgrain] * sqrt2;
-						float X_reconstruct = STslice[frame][which_STgrain] * COS(azimuth) * cosElev;
-						float Y_reconstruct = STslice[frame][which_STgrain] * SIN(azimuth) * cosElev;
-						float Z_reconstruct = STslice[frame][which_STgrain] * SIN(elev);
+						float W_reconstruct = STslice[frame][STgrain_index] * sqrt2;
+						float X_reconstruct = STslice[frame][STgrain_index] * COS(azimuth) * cosElev;
+						float Y_reconstruct = STslice[frame][STgrain_index] * SIN(azimuth) * cosElev;
+						float Z_reconstruct = STslice[frame][STgrain_index] * SIN(elev);
 
-						// Add each grain
+						// Add each ST_grain
 						*w_r += W_reconstruct;
 						*x_r += X_reconstruct;
 						*y_r += Y_reconstruct;
 						*z_r += Z_reconstruct;
 
 					} // End of Azi
-				} // End of elev
+				} // End of Elev
 
 				// Normalize (based on acive grains) for each reconstructed ambi channel
 				*w_r /= (float)(active_STgrains+1)/ 1.0;
@@ -469,6 +462,7 @@ public:
 
 				*w_r = 0.0; *x_r = 0.0; *y_r = 0.0; *z_r = 0.0;
 
+				// Increment pointer by 4 (4 channel interleave Ambi files)
 				w_0+=4; x_0+=4; y_0+=4; z_0+=4;
 				w_1+=4; x_1+=4; y_1+=4; z_1+=4;
 				w_r+=4; x_r+=4; y_r+=4; z_r+=4;
@@ -482,15 +476,7 @@ public:
 				active_STgrains = 0;
 			} // End of audio frames
 			spatializer->finalize(io);
-
 		} // End of onSound
-
-
-		virtual void onKeyDown(const Keyboard& k) override {
-			if (k.key() == 'g') {
-				params.mGrayscale = !params.mGrayscale;
-			}
-		}
 
 	private:
 		Mesh mMesh;
@@ -504,9 +490,9 @@ public:
 		AmbisonicsSpatializer *spatializer;
 		ShaderManager shaderManager;
 
+		vector<float> mRmsAccum;
 		int mRmsCounter;
 		int mRmsSamples;
-		vector<float> mRmsAccum;
 		float mRms[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
 
 		SoundFileBuffered *mSoundFile[8];
@@ -517,6 +503,7 @@ public:
 		float reconstructWonly[AUDIO_BLOCK_SIZE];
 		float originalWonly[AUDIO_BLOCK_SIZE];
 
+		float reconstructAmbiNormFactor = SPATIAL_SAMPLING * SPATIAL_SAMPLING;
 		float STslice[AUDIO_BLOCK_SIZE][SPATIAL_SAMPLING*SPATIAL_SAMPLING];
 		// float STslice[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
 		float crossSynth_RMSAccum[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
@@ -524,13 +511,12 @@ public:
 		float prev_crossSynth_RMS[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
 		float interp_crossSynth_RMS;
 
+		float maxVal = 0.0;
 		float masterMix;
 		float signal_mix[3];
 		float rmsThreshold;
 		int active_STgrains;
 		int visFps = 30;
-		float maxVal = 0.0;
-
 
 		string filename[NUM_OF_FILES];
 		string fullPath[NUM_OF_FILES];

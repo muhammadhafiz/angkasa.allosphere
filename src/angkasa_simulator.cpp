@@ -17,6 +17,9 @@
 #include "allocore/ui/al_ParameterMIDI.hpp"
 #include "alloutil/al_ShaderManager.hpp"
 
+#include "../../stk/include/Granulate.h"
+// #include "Granulate.h"
+
 using namespace al;
 using namespace std;
 
@@ -143,7 +146,10 @@ public:
 				audioIO().deviceOut(outdev);
 			} else initAudio(mSoundFile[0]->frameRate(), AUDIO_BLOCK_SIZE, 2, 0);
 			mStateMaker.start();
+
+
 		}
+
 
 		// Check if using Allosphere
 		bool sim(){
@@ -363,10 +369,10 @@ public:
 													  + (*z_0 * SIN(elev));
 
 						// Calculate the STgrain for sample_1
-						float STgrain_1 = (*w_1 * sqrt2)
-													  + (*x_1 * COS(azimuth) * cosElev)
-													  + (*y_1 * SIN(azimuth) * cosElev)
-													  + (*z_1 * SIN(elev));
+						float STgrain_1= (*w_1 * sqrt2)
+													 + (*x_1 * COS(azimuth) * cosElev)
+													 + (*y_1 * SIN(azimuth) * cosElev)
+													 + (*z_1 * SIN(elev));
 
 						// Accumulate STgrain^2 of each STgrain for sample_1 (for RMS)
 						crossSynth_RMSAccum[STgrain_index] += STgrain_1 * STgrain_1;
@@ -379,11 +385,10 @@ public:
 							crossSynth_RMS[STgrain_index] = sqrt(crossSynth_RMSAccum[STgrain_index]/ (float)numFrames);// * 1.2;
 							crossSynth_RMSAccum[STgrain_index]= 0.0;
 						}
-						// STgrain_mix[frame] = STgrain_0;
 						STgrain_mix[frame] = (STgrain_0 * signal_mix[0])
 															 + (STgrain_1 * signal_mix[1])
 															 + (STgrain_0 * (interp_crossSynth_RMS* 4.0) * signal_mix[2]);
-
+						// STgrain_mix[frame] = STgrain_0;
 
 						// Accumulate STgrain_mix^2
 						mRmsAccum[STgrain_index] += STgrain_mix[frame] * STgrain_mix[frame];
@@ -454,10 +459,6 @@ public:
 				// OUTPUT
 				for (int chan = 0; chan < 4; chan++) { // For every Ambi Channel
 					ambiChans[frame+ chan*AUDIO_BLOCK_SIZE] = reconstructAmbiBuffer[frame*4 + chan]* params.mMasterGain;
-					// if (ambiChans[frame+ chan*AUDIO_BLOCK_SIZE] > maxVal){
-					// 	maxVal = ambiChans[frame+ chan*AUDIO_BLOCK_SIZE];
-					// 	cout << maxVal << endl;
-					// }
 				}
 
 				*w_r = 0.0; *x_r = 0.0; *y_r = 0.0; *z_r = 0.0;
@@ -477,6 +478,7 @@ public:
 			} // End of audio frames
 			spatializer->finalize(io);
 		} // End of onSound
+
 
 	private:
 		Mesh mMesh;
@@ -530,6 +532,7 @@ public:
 
 	int main(int argc, char *argv[])
 	{
+		// stk::Granulate grani;
 
 		Angkasa app;
 

@@ -9,8 +9,9 @@ void main() {
 
     vec4 vertex = gl_ModelViewMatrix * gl_Vertex;
 
-// LOCAL: 
-    gl_PointSize = (textureColor.r * 250.0);
+// LOCAL:
+    gl_PointSize = (textureColor.r * 500.0);
+//    gl_PointSize = (textureColor.r * 250.0);
 //    gl_PointSize = 0.01 + (textureColor.r * 15.0) * (textureColor.r * 15.0);
 
 // ALLOSPHERE:

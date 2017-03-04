@@ -2,6 +2,7 @@
 // Author: Muhammad Hafiz Wan Rosli
 // January 1st 2017
 
+
 #include "allocore/al_Allocore.hpp"
 #include <allocore/types/al_SingleRWRingBuffer.hpp>
 #include "Cuttlebone/Cuttlebone.hpp"
@@ -17,8 +18,7 @@
 #include "allocore/ui/al_ParameterMIDI.hpp"
 #include "alloutil/al_ShaderManager.hpp"
 
-#include "../../stk/include/Granulate.h"
-// #include "Granulate.h"
+#include "granulate.h"
 
 using namespace al;
 using namespace std;
@@ -31,18 +31,26 @@ using namespace std;
 // #define COS gam::scl::cosT8
 
 ParameterMIDI parameterMIDI; // KORG nanoKONTROL2
-Parameter Slider0("RMS Gain", "", 0.05, "", 0.0, 1.0);
+Parameter Slider0("RMS Gain", "", 0.1, "", 0.0, 1.0);
 Parameter Slider1("RMS Threshold", "", 0.0, "", 0.0, 0.2);
 Parameter Slider2("Master Mix", "", 0.0, "", 0.0, 1.0);
 
-Parameter Slider6("Grain Size", "", AUDIO_BLOCK_SIZE, "", 128, AUDIO_BLOCK_SIZE);
-Parameter Slider7("Master Gain", "", 0.0, "", 0.0, 1.0);
+Parameter Slider7("Master Gain", "", 0.5, "", 0.0, 1.0);
 
 Parameter recButton("PrintOut Vals", "", 0.0, "", 0.0, 1.0);
 Parameter track_backward("Change Carrier (backward)", "", 0, "", 0, 1);
 Parameter track_forward("Change Carrier (forward)", "", 0, "", 0, 1);
 Parameter marker_backward("Change Modulator (backward)", "", 0, "", 0, 1);
 Parameter marker_forward("Change Modulator (forward)", "", 0, "", 0, 1);
+
+Parameter reset_grains("Reset Grains", "", 0.0, "", 0.0, 1.0);
+Parameter Slider16("Grain Voices", "", 1, "", 1, 20);
+Parameter Slider17("Grain Duration", "", 1, "", 1, 300);
+Parameter Slider18("Grain Ramp", "", 0, "", 0, 100);
+Parameter Slider19("Grain Offset", "", 0, "", -149, 150);
+Parameter Slider20("Grain Delay", "", 0, "", 0, 300);
+Parameter Slider21("Grain Stretch", "", 1, "", 1, 5);
+Parameter Slider22("Grain Randomness", "", 0., "", 0., 1.);
 
 class MeterParams {
 public:
@@ -92,14 +100,15 @@ public:
 			SearchPaths sp;
 			sp.addSearchPath(".", true);
 			// 0 = carrier, i.e. source, 1 = modulator
+			// Problemwhen source and modulator is the same file. Try to avoid!
 			filename[0] = "norm_organ.wav";
 			filename[1] = "norm_fireworks.wav";
 			filename[2] = "norm_insects.wav";
 			filename[3] = "norm_gamelan_bapangSelisir.wav";
 			filename[4] = "norm_gulls.wav";
 			filename[5] = "norm_steamtrain.wav";
-			filename[6] = "rain_barrett.wav";
-			filename[7] = "fireworks_0.1_constantStretch.wav";
+			filename[6] = "norm_440_45-45.wav";
+			filename[7] = "norm_440_0-0_660_90-0.wav";
 			for (int i = 0; i < NUM_OF_FILES; i++){
 				fullPath[i] = sp.find(filename[i]).filepath();
 
@@ -132,6 +141,7 @@ public:
 			mRmsSamples = mSoundFile[0]->frameRate() / visFps;
 			mRmsCounter = 0;
 			mRmsAccum.resize(SPATIAL_SAMPLING * SPATIAL_SAMPLING);
+			// TODO: use memset to write zeros instead
 			for (int i = 0; i < SPATIAL_SAMPLING * SPATIAL_SAMPLING; i++) {
 				mRmsAccum[i] = 0.0;
 			}
@@ -147,7 +157,32 @@ public:
 			} else initAudio(mSoundFile[0]->frameRate(), AUDIO_BLOCK_SIZE, 2, 0);
 			mStateMaker.start();
 
+			framesRead[0]= 0;
+			framesRead[1]= 0;
 
+			// TEST: GRANI STUFFS
+			g_N = 1;
+			g_duration = 1;
+			g_ramp = 0;
+			g_offset = 0;
+			g_delay = 0;
+			g_stretch = 1;
+			g_random = 0.;
+			numSamplesInFile = mSoundFile[0]->frames();
+			shouldOutput = false;
+
+			// cout << mSoundFile[0]->frameRate() << endl;
+			for (int i = 0; i < SPATIAL_SAMPLING * SPATIAL_SAMPLING; i++) {
+				numSamplesReadFromFile[i] = 0;
+				grani[i].setSampleRate(mSoundFile[0]->frameRate()); //NOTE: DO NOT HARD CODE THE SAMPLE RATE
+				grani[i].setRandomFactor(g_random);
+				grani[i].setStretch(g_stretch);
+				grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
+				// grani.openFile("./examples/_granulatorTest/sine440_44k.wav");
+				grani[i].openFile("./examples/_granulatorTest/organ_fade.wav");
+				// grani[i].openFile("./examples/_granulatorTest/passport.wav");
+				grani[i].setVoices(g_N);
+			}
 		}
 
 
@@ -260,6 +295,33 @@ public:
 				signal_mix[1] = (1- masterMix)*2;
 				signal_mix[2] = (masterMix*2) - 1;
 			}
+
+			g_N 				= Slider16.get();
+			g_duration 	= Slider17.get();
+			g_ramp 			= Slider18.get();
+			g_offset 		= Slider19.get();
+			g_delay 		= Slider20.get();
+			g_stretch 	= Slider21.get();
+			g_random 		= Slider22.get();
+
+			std::cout << "Carrier: " << params.mCarrierFile
+								<< "| Modulator: " << params.mModulatorFile
+								<< "| Voices: " << g_N
+								<< "| Duration: " << g_duration
+								<< "| Ramp: " << g_ramp
+								<< "| Offset: " << g_offset
+								<< "| Delay: " << g_delay
+								<< "| Stretch: " << g_stretch
+								<< "| Random: " << g_random
+								<< std::endl;
+
+			// std::cout << g_duration << std::endl;
+			for (int i = 0; i< SPATIAL_SAMPLING*SPATIAL_SAMPLING; i++){
+				grani[i].setVoices(g_N);
+				grani[i].setRandomFactor(g_random);
+				grani[i].setStretch(g_stretch);
+				grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
+			}
 		}
 
 		virtual void onDraw(Graphics &g) override {
@@ -269,8 +331,8 @@ public:
 			glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
 			g.blendAdd();
 			// Draw wireframe mesh
-			g.lineWidth(0.1);
-			g.color(1,1,1,0.1);
+			g.lineWidth(0.25);
+			g.color(1,1,1,0.5);
 			g.draw(mWireframeMesh);
 
 			// Read the texture buffer
@@ -307,6 +369,7 @@ public:
 		}
 
 		virtual void onSound(AudioIOData &io) override{
+			//
 			spatializer->prepare();
 			float * ambiChans = spatializer->ambiChans();
 
@@ -314,7 +377,6 @@ public:
 			// int numFrames = Slider6.get();
 			// assert(AUDIO_BLOCK_SIZE == numFrames);
 
-			int framesRead[2];
 			float sqrt2 = 1.0/ sqrt(2.0);
 			float windowFunction[numFrames];
 			gam::tbl::hann(windowFunction, numFrames);
@@ -328,40 +390,37 @@ public:
 				cout << "buffer overrun! framesRead[1]: " << framesRead[1] << " frames" << endl;
 			}
 
-			// Pointer for buffer 0
-			float *w_0 = readBuffer[0];
-			float *x_0 = readBuffer[0] + 1;
-			float *y_0 = readBuffer[0] + 2;
-			float *z_0 = readBuffer[0] + 3;
-
-			// Pointer for buffer 1
-			float *w_1 = readBuffer[1];
-			float *x_1 = readBuffer[1] + 1;
-			float *y_1 = readBuffer[1] + 2;
-			float *z_1 = readBuffer[1] + 3;
-
-			// Pointer for reconstructed buffer
-			float *w_r = reconstructAmbiBuffer;
-			float *x_r = reconstructAmbiBuffer + 1;
-			float *y_r = reconstructAmbiBuffer + 2;
-			float *z_r = reconstructAmbiBuffer + 3;
-
-			// Pointer for output RMS
+			// Pointer for output RMS, NxN
 			float *rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
 
-			for (int frame = 0; frame < numFrames; frame++) { // For each frame in the buffer
-				mRmsCounter++;
-				for(int elevIndex = 0; elevIndex < SPATIAL_SAMPLING; elevIndex++) { // For sampled elevation
-					float elev = M_PI/2.0 - (M_PI * (elevIndex + 0.5)/(float) SPATIAL_SAMPLING); // -1.51844 to 1.51844
-					float cosElev = COS(elev);
-					for(int azimuthIndex = 0; azimuthIndex < SPATIAL_SAMPLING; azimuthIndex++) { // For each sampled azimuth
-						float azimuth = M_2PI * (azimuthIndex + 0.5)/(float) SPATIAL_SAMPLING; // 0.10472 to 6.17847
-						int STgrain_index = azimuthIndex * SPATIAL_SAMPLING + elevIndex;
-						float STgrain_mix[AUDIO_BLOCK_SIZE];
-						float rmsScaled;
-						float r,g,b;
-						bool STgrain_ON;
+			active_STgrains = 0;
+			for(int elevIndex = 0; elevIndex < SPATIAL_SAMPLING; elevIndex++) { // For sampled elevation
+				float elev = M_PI/2.0 - (M_PI * (elevIndex + 0.5)/(float) SPATIAL_SAMPLING); // -1.51844 to 1.51844
+				float cosElev = COS(elev);
+				for(int azimuthIndex = 0; azimuthIndex < SPATIAL_SAMPLING; azimuthIndex++) { // For each sampled azimuth
+					float azimuth = M_2PI * (azimuthIndex + 0.5)/(float) SPATIAL_SAMPLING; // 0.10472 to 6.17847
+					int STgrain_index = azimuthIndex * SPATIAL_SAMPLING + elevIndex;
+					float STgrain_mix[AUDIO_BLOCK_SIZE];//TODO: Pre-allocate this above, then memset to 0
 
+
+					float rmsScaled;
+					float r,g,b;
+					bool STgrain_ON = false; //init to 0
+					crossSynth_RMSAccum[STgrain_index]= 0.0;
+
+					// Pointer for buffer 0
+					float *w_0 = readBuffer[0];
+					float *x_0 = readBuffer[0] + 1;
+					float *y_0 = readBuffer[0] + 2;
+					float *z_0 = readBuffer[0] + 3;
+
+					// Pointer for buffer 1
+					float *w_1 = readBuffer[1];
+					float *x_1 = readBuffer[1] + 1;
+					float *y_1 = readBuffer[1] + 2;
+					float *z_1 = readBuffer[1] + 3;
+
+					for (int frame = 0; frame < numFrames; frame++) { // For each frame in the buffer
 						// Calculate the STgrain for sample_0
 						float STgrain_0 = (*w_0 * sqrt2)
 													  + (*x_0 * COS(azimuth) * cosElev)
@@ -369,10 +428,10 @@ public:
 													  + (*z_0 * SIN(elev));
 
 						// Calculate the STgrain for sample_1
-						float STgrain_1= (*w_1 * sqrt2)
-													 + (*x_1 * COS(azimuth) * cosElev)
-													 + (*y_1 * SIN(azimuth) * cosElev)
-													 + (*z_1 * SIN(elev));
+						float STgrain_1 = (*w_1 * sqrt2)
+													  + (*x_1 * COS(azimuth) * cosElev)
+													  + (*y_1 * SIN(azimuth) * cosElev)
+													  + (*z_1 * SIN(elev));
 
 						// Accumulate STgrain^2 of each STgrain for sample_1 (for RMS)
 						crossSynth_RMSAccum[STgrain_index] += STgrain_1 * STgrain_1;
@@ -380,62 +439,93 @@ public:
 						// Calculate the interpolated RMS of each STgrain of sample_1
 						interp_crossSynth_RMS = ipl::linear((float) (frame)/ (numFrames-1), prev_crossSynth_RMS[STgrain_index], crossSynth_RMS[STgrain_index]);
 
-						if(frame == numFrames-1){ // At the end of audio block
-							prev_crossSynth_RMS[STgrain_index] = crossSynth_RMS[STgrain_index];
-							crossSynth_RMS[STgrain_index] = sqrt(crossSynth_RMSAccum[STgrain_index]/ (float)numFrames);// * 1.2;
-							crossSynth_RMSAccum[STgrain_index]= 0.0;
-						}
 						STgrain_mix[frame] = (STgrain_0 * signal_mix[0])
 															 + (STgrain_1 * signal_mix[1])
-															 + (STgrain_0 * (interp_crossSynth_RMS* 4.0) * signal_mix[2]);
+															 + (STgrain_0 * (interp_crossSynth_RMS* 6.0) * signal_mix[2]);
 						// STgrain_mix[frame] = STgrain_0;
+						// STslice[STgrain_index][frame] = STgrain_mix[frame] * windowFunction[frame];
 
-						// Accumulate STgrain_mix^2
-						mRmsAccum[STgrain_index] += STgrain_mix[frame] * STgrain_mix[frame];
-						rmsScaled = mRms[STgrain_index] * params.mRmsGain;
-
-						rmsThreshold = Slider1.get();
-						if (rmsScaled <= rmsThreshold) {
-							STgrain_ON = false;
-							r = 0.0;
-							g = 2 * rmsScaled;
-							b = 2 * (rmsThreshold - rmsScaled);
-						} else {
-							STgrain_ON = true;
-							active_STgrains++;
-							r = 2 * (rmsScaled - rmsThreshold);
-							g = 2 * ( 1- rmsScaled);
-							b = 0.0;
+						// TODO: Try double buffer and memcopy
+						if (numSamplesReadFromFile[STgrain_index] < numSamplesInFile){
+								grani[STgrain_index].writeData(STgrain_mix[frame]);
+								numSamplesReadFromFile[STgrain_index]++;
+						}
+						else if (numSamplesReadFromFile[STgrain_index] >= numSamplesInFile){
+							numSamplesReadFromFile[STgrain_index] = 0;
+							// cout << "reset!" << endl;
 						}
 
-						// Trigger STgrains based on conditionals, in this case, RMS threshold
-						if(STgrain_ON == true){
-							STslice[frame][STgrain_index] = STgrain_mix[frame] * windowFunction[frame];
-						}else{
-							STslice[frame][STgrain_index] = 0.0;
+						int currentFile = params.mCarrierFile;
+						if (params.mCarrierFile != currentFile){
+							numSamplesReadFromFile[STgrain_index] = 0;
+							// grani[STgrain_index].writeData(STgrain_mix[frame]);
 						}
 
-						if(frame == numFrames-1){ // At the end of audio block (255/ 511 maybe?)
-							mRms[STgrain_index] = sqrt(mRmsAccum[STgrain_index] / (float) numFrames);
-							mRmsAccum[STgrain_index] = 0.0;
-
-							*rmsBuffer++ = sqrt(r); // rmsScaled- rmsThreshold;
-							*rmsBuffer++ = sqrt(g); // rmsScaled- rmsThreshold;
-							*rmsBuffer++ = sqrt(b); // rmsScaled- rmsThreshold;
-
-							int bytesToWrite = SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float);
-							if (mTextureBuffer.writeSpace() >= bytesToWrite) {
-								mTextureBuffer.write(mNewRmsMeterValues.data.ptr, bytesToWrite);
-							} else {
-								// cout << "Texture Buffer overrun!" << endl;
+						if(reset_grains.get() == 1){
+							for (int i = 0; i< SPATIAL_SAMPLING*SPATIAL_SAMPLING; i++){
+								grani[i].reset();
 							}
 						}
 
+						// Offset and delay messes up the read and write head. Try pointers to ring buffer
+						calculatedGranulatedValue[STgrain_index][frame] = grani[STgrain_index].tick(0);
+
+						// Accumulate STgrain_mix^2
+						// mRmsAccum[STgrain_index] += STgrain_mix[frame] * STgrain_mix[frame];
+						// TODO: Find out a way to output lastFrame_ without ticking granulation engine
+						mRmsAccum[STgrain_index] += calculatedGranulatedValue[STgrain_index][frame] * calculatedGranulatedValue[STgrain_index][frame];
+
+						// Increment pointer by 4 (4 channel interleave Ambi files)
+						w_0+=4; x_0+=4; y_0+=4; z_0+=4;
+						w_1+=4; x_1+=4; y_1+=4; z_1+=4;
+
+					} // End of audio frames
+
+					prev_crossSynth_RMS[STgrain_index] = crossSynth_RMS[STgrain_index];
+					crossSynth_RMS[STgrain_index] = sqrt(crossSynth_RMSAccum[STgrain_index]/ (float)numFrames) * 2.0;
+
+					mRms[STgrain_index] = sqrt(mRmsAccum[STgrain_index] / (float) numFrames);
+					mRmsAccum[STgrain_index] = 0.0;
+					rmsScaled = mRms[STgrain_index] * params.mRmsGain;
+
+					rmsThreshold = Slider1.get();
+					if (rmsScaled <= rmsThreshold) {
+						STgrain_ON = false;
+						r = 0.0;
+						g = 2 * rmsScaled;
+						b = 2 * (rmsThreshold - rmsScaled);
+					} else {
+						STgrain_ON = true;
+						active_STgrains++;
+						r = 2 * (rmsScaled - rmsThreshold);
+						g = 2 * ( 1- rmsScaled);
+						b = 0.0;
+					}
+
+
+					// Pointer for reconstructed buffer
+					float *w_r = reconstructAmbiBuffer;
+					float *x_r = reconstructAmbiBuffer + 1;
+					float *y_r = reconstructAmbiBuffer + 2;
+					float *z_r = reconstructAmbiBuffer + 3;
+
+					for (int frame = 0; frame < numFrames; frame++) { // For each frame in the buffer
+						// Trigger STgrains based on conditionals, in this case, RMS threshold
+						// float calculatedGranulatedValue = grani[STgrain_index].tick(0) * windowFunction[frame];
+						if(STgrain_ON){
+							// STslice[STgrain_index][frame] = calculatedGranulatedValue;// * windowFunction[frame];
+							STslice[STgrain_index][frame] = calculatedGranulatedValue[STgrain_index][frame] * windowFunction[frame];
+							// STslice[STgrain_index][frame] = STgrain_mix[frame] * windowFunction[frame];
+							// STslice[STgrain_index][frame] = STgrain_mix[frame];
+						} else {
+							STslice[STgrain_index][frame] = 0.0;
+						}
+
 						// Project each grain on to corresponding direction
-						float W_reconstruct = STslice[frame][STgrain_index] * sqrt2;
-						float X_reconstruct = STslice[frame][STgrain_index] * COS(azimuth) * cosElev;
-						float Y_reconstruct = STslice[frame][STgrain_index] * SIN(azimuth) * cosElev;
-						float Z_reconstruct = STslice[frame][STgrain_index] * SIN(elev);
+						float W_reconstruct = STslice[STgrain_index][frame] * sqrt2;
+						float X_reconstruct = STslice[STgrain_index][frame] * COS(azimuth) * cosElev;
+						float Y_reconstruct = STslice[STgrain_index][frame] * SIN(azimuth) * cosElev;
+						float Z_reconstruct = STslice[STgrain_index][frame] * SIN(elev);
 
 						// Add each ST_grain
 						*w_r += W_reconstruct;
@@ -443,50 +533,145 @@ public:
 						*y_r += Y_reconstruct;
 						*z_r += Z_reconstruct;
 
-					} // End of Azi
-				} // End of Elev
+						// Increment pointer by 4 (4 channel interleave Ambi files)
+						w_r+=4; x_r+=4; y_r+=4; z_r+=4;
+					} // End of audio frames
 
-				// Normalize (based on acive grains) for each reconstructed ambi channel
-				*w_r /= (float)(active_STgrains+1)/ 1.0;
-				*x_r /= (float)(active_STgrains+1)/ 2.0;
-				*y_r /= (float)(active_STgrains+1)/ 2.0;
-				*z_r /= (float)(active_STgrains+1)/ 1.0;
 
-				// Temporary: Draw the waveforms
-				originalWonly[frame] = *w_0; //*w_0
-				reconstructWonly[frame] = *w_r;//reconstructAmbiBuffer[frame*4] * interp_crossSynth_RMS[frame]* 2.0; //*r_z/ (reconstructAmbiNorm/2); //2,4,4,2
 
-				// OUTPUT
+					// // Trigger STgrains based on conditionals, in this case, RMS threshold
+					// if(STgrain_ON){
+					// 	// Pointer for reconstructed buffer
+					// 	float *w_r = reconstructAmbiBuffer;
+					// 	float *x_r = reconstructAmbiBuffer + 1;
+					// 	float *y_r = reconstructAmbiBuffer + 2;
+					// 	float *z_r = reconstructAmbiBuffer + 3;
+					//
+					// 	for (int frame = 0; frame < numFrames; frame++) { // For each frame in the buffer
+					// 		// Project each grain on to corresponding direction
+					// 		// STslice[STgrain_index][frame] = STgrain_mix[frame] * windowFunction[frame];
+					// 		STslice[STgrain_index][frame] = STgrain_mix[frame];
+					//
+					// 		float W_reconstruct = STslice[STgrain_index][frame] * sqrt2;
+					// 		float X_reconstruct = STslice[STgrain_index][frame] * COS(azimuth) * cosElev;
+					// 		float Y_reconstruct = STslice[STgrain_index][frame] * SIN(azimuth) * cosElev;
+					// 		float Z_reconstruct = STslice[STgrain_index][frame] * SIN(elev);
+					//
+					// 		// Add each ST_grain
+					// 		*w_r += W_reconstruct;
+					// 		*x_r += X_reconstruct;
+					// 		*y_r += Y_reconstruct;
+					// 		*z_r += Z_reconstruct;
+					//
+					// 		// Increment pointer by 4 (4 channel interleave Ambi files)
+					// 		w_r+=4; x_r+=4; y_r+=4; z_r+=4;
+					// 	} // End of audio frames
+					// } else{
+					// 	for (int frame = 0; frame < numFrames; frame++) { // For each frame in the buffer
+					// 		STslice[STgrain_index][frame] = 0.0;
+					// 	}
+					// }
+
+					*rmsBuffer++ = sqrt(r); // rmsScaled- rmsThreshold;
+					*rmsBuffer++ = sqrt(g); // rmsScaled- rmsThreshold;
+					*rmsBuffer++ = sqrt(b); // rmsScaled- rmsThreshold;
+					// Hello!
+					int bytesToWrite = SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float);
+					if (mTextureBuffer.writeSpace() >= bytesToWrite) {
+						mTextureBuffer.write(mNewRmsMeterValues.data.ptr, bytesToWrite);
+					} else {
+						// cout << "Texture Buffer overrun!" << endl;
+					}
+
+					// mRmsCounter++;
+					// // cout << mRmsCounter << endl;
+					// if (mRmsCounter == mRmsSamples) {
+					// 	mRmsCounter = 0;
+					// 	rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
+					// 	memcpy(mState.rmsTexture, rmsBuffer, SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float));
+					// 	mStateMaker.set(mState);
+					// }
+				} // End of Azi
+			} // End of Elev
+
+
+
+			// OUTPUT
+			float channelWeights[4] = {2.0, 4.0, 4.0, 2.0};
+
+			float * w_0 = readBuffer[0];
+			float * w_r = reconstructAmbiBuffer;
+			for (int frame = 0; frame < AUDIO_BLOCK_SIZE; frame++){
 				for (int chan = 0; chan < 4; chan++) { // For every Ambi Channel
-					ambiChans[frame+ chan*AUDIO_BLOCK_SIZE] = reconstructAmbiBuffer[frame*4 + chan]* params.mMasterGain;
-				}
+					// Normalize (based on acive grains) for each reconstructed ambi channel
+						// *w_r /= (float)(active_STgrains+1)/ 1.0;
+						// *x_r /= (float)(active_STgrains+1)/ 2.0;
+						// *y_r /= (float)(active_STgrains+1)/ 2.0;
+						// *z_r /= (float)(active_STgrains+1)/ 1.0;
+						reconstructAmbiBuffer[frame*4 + chan] /= (float)(active_STgrains+1) / channelWeights[chan];
+						ambiChans[frame+ chan*AUDIO_BLOCK_SIZE] = reconstructAmbiBuffer[frame*4 + chan]* params.mMasterGain;
+					}
+					// Temporary: Draw the waveforms
+					originalWonly[frame] = *w_0;
+					w_0 += 4; //*w_0
+				 	reconstructWonly[frame] = *w_r;
+					w_r += 4;//reconstructAmbiBuffer[frame*4] * interp_crossSynth_RMS[frame]* 2.0; //*r_z/ (reconstructAmbiNorm/2); //2,4,4,2
+			}
 
-				*w_r = 0.0; *x_r = 0.0; *y_r = 0.0; *z_r = 0.0;
+		    // for ( unsigned int i=0; i<AUDIO_BLOCK_SIZE; i++ ) {
+		    //   float value = grani[0].tick(0);
+		    //   io.out(0,i) = value;
+		    // // std::cout << value << std::endl;
+		    // }
 
-				// Increment pointer by 4 (4 channel interleave Ambi files)
-				w_0+=4; x_0+=4; y_0+=4; z_0+=4;
-				w_1+=4; x_1+=4; y_1+=4; z_1+=4;
-				w_r+=4; x_r+=4; y_r+=4; z_r+=4;
-
-				if (mRmsCounter == mRmsSamples) {
-					mRmsCounter = 0;
-					rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
-					memcpy(mState.rmsTexture, rmsBuffer, SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float));
-					mStateMaker.set(mState);
-				}
-				active_STgrains = 0;
-			} // End of audio frames
 			spatializer->finalize(io);
+			memset(reconstructAmbiBuffer, 0, sizeof(float) * AUDIO_BLOCK_SIZE * 4);
 		} // End of onSound
 
+		virtual void onKeyDown(const Keyboard& k) override {
+			if (k.key() == '1') {
+				params.mCarrierFile = 0;
+			} else if (k.key() == '2'){
+				params.mCarrierFile = 1;
+			} else if (k.key() == '3'){
+				params.mCarrierFile = 2;
+			} else if (k.key() == '4'){
+				params.mCarrierFile = 3;
+			} else if (k.key() == '5'){
+				params.mCarrierFile = 4;
+			} else if (k.key() == '6'){
+				params.mCarrierFile = 5;
+			} else if (k.key() == '7'){
+				params.mCarrierFile = 6;
+			} else if (k.key() == '8'){
+				params.mCarrierFile = 7;
+
+			} else if (k.key() == 'r'){
+				params.mModulatorFile = 0;
+			} else if (k.key() == 't'){
+				params.mModulatorFile = 1;
+			} else if (k.key() == 'y'){
+				params.mModulatorFile = 2;
+			} else if (k.key() == 'u'){
+				params.mModulatorFile = 3;
+			} else if (k.key() == 'i'){
+				params.mModulatorFile = 4;
+			} else if (k.key() == 'o'){
+				params.mModulatorFile = 5;
+			} else if (k.key() == 'p'){
+				params.mModulatorFile = 6;
+			} else if (k.key() == '['){
+				params.mModulatorFile = 7;
+			}
+		}
 
 	private:
 		Mesh mMesh;
 		Mesh mWireframeMesh;
 		Texture mTexture;
 		Texture mSpriteTex;
-		Array mMeterValues;
-		Array mNewRmsMeterValues;
+		al::Array mMeterValues;
+		al::Array mNewRmsMeterValues;
 		SingleRWRingBuffer mTextureBuffer;
 
 		AmbisonicsSpatializer *spatializer;
@@ -506,8 +691,9 @@ public:
 		float originalWonly[AUDIO_BLOCK_SIZE];
 
 		float reconstructAmbiNormFactor = SPATIAL_SAMPLING * SPATIAL_SAMPLING;
-		float STslice[AUDIO_BLOCK_SIZE][SPATIAL_SAMPLING*SPATIAL_SAMPLING];
+		float STslice[SPATIAL_SAMPLING*SPATIAL_SAMPLING][AUDIO_BLOCK_SIZE];
 		// float STslice[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
+		float calculatedGranulatedValue[SPATIAL_SAMPLING*SPATIAL_SAMPLING][AUDIO_BLOCK_SIZE];
 		float crossSynth_RMSAccum[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
 		float crossSynth_RMS[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
 		float prev_crossSynth_RMS[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
@@ -518,10 +704,25 @@ public:
 		float signal_mix[3];
 		float rmsThreshold;
 		int active_STgrains;
-		int visFps = 30;
+		int visFps = 60;
+
+		int numSamplesInFile;
+		int numSamplesReadFromFile[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
+		// bool shouldOutput[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
+		bool shouldOutput;
+		int framesRead[2];
 
 		string filename[NUM_OF_FILES];
 		string fullPath[NUM_OF_FILES];
+
+		Granulate grani[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
+		int g_N;
+		int g_duration;
+		int g_ramp;
+		int g_offset;
+		int g_delay;
+		int g_stretch;
+		float g_random;
 
 		MeterParams params;
 
@@ -532,7 +733,6 @@ public:
 
 	int main(int argc, char *argv[])
 	{
-		// stk::Granulate grani;
 
 		Angkasa app;
 
@@ -543,7 +743,7 @@ public:
 		parameterMIDI.connectControl(Slider1, 1, 1);
 		parameterMIDI.connectControl(Slider2, 2, 1);
 
-		parameterMIDI.connectControl(Slider6, 6, 1);
+		// parameterMIDI.connectControl(Slider6, 6, 1);
 		parameterMIDI.connectControl(Slider7, 7, 1);
 
 		parameterMIDI.connectControl(recButton, 45, 1);
@@ -551,6 +751,15 @@ public:
 		parameterMIDI.connectControl(track_forward, 59, 1);
 		parameterMIDI.connectControl(marker_backward, 61, 1);
 		parameterMIDI.connectControl(marker_forward, 62, 1);
+
+		parameterMIDI.connectControl(reset_grains, 46, 1);
+		parameterMIDI.connectControl(Slider16, 16, 1);
+		parameterMIDI.connectControl(Slider17, 17, 1);
+		parameterMIDI.connectControl(Slider18, 18, 1);
+		parameterMIDI.connectControl(Slider19, 19, 1);
+		parameterMIDI.connectControl(Slider20, 20, 1);
+		parameterMIDI.connectControl(Slider21, 21, 1);
+		parameterMIDI.connectControl(Slider22, 22, 1);
 
 		app.start();
 	}

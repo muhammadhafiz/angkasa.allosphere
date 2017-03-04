@@ -304,16 +304,16 @@ public:
 			g_stretch 	= Slider21.get();
 			g_random 		= Slider22.get();
 
-			std::cout << "Carrier: " << params.mCarrierFile
-								<< "| Modulator: " << params.mModulatorFile
-								<< "| Voices: " << g_N
-								<< "| Duration: " << g_duration
-								<< "| Ramp: " << g_ramp
-								<< "| Offset: " << g_offset
-								<< "| Delay: " << g_delay
-								<< "| Stretch: " << g_stretch
-								<< "| Random: " << g_random
-								<< std::endl;
+			// std::cout << "Carrier: " << params.mCarrierFile
+			// 					<< "| Modulator: " << params.mModulatorFile
+			// 					<< "| Voices: " << g_N
+			// 					<< "| Duration: " << g_duration
+			// 					<< "| Ramp: " << g_ramp
+			// 					<< "| Offset: " << g_offset
+			// 					<< "| Delay: " << g_delay
+			// 					<< "| Stretch: " << g_stretch
+			// 					<< "| Random: " << g_random
+			// 					<< std::endl;
 
 			// std::cout << g_duration << std::endl;
 			for (int i = 0; i< SPATIAL_SAMPLING*SPATIAL_SAMPLING; i++){

@@ -77,7 +77,7 @@ public:
 		// mTexture.create();
 		// mTexture.resize(32, 32);
 
-		initWindow(Window::Dim(0,0, 600, 400), "SG AlloSphere Renderer", 30);
+		initWindow(Window::Dim(0,0, 600, 400), "SG AlloSphere Renderer", 60);
 		mStateTaker.start();
 
 //		light.ambient(Color(0.4, 0.4, 0.4, 1.0));

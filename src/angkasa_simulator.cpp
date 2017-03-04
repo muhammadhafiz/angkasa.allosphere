@@ -107,8 +107,8 @@ public:
 			filename[3] = "norm_gamelan_bapangSelisir.wav";
 			filename[4] = "norm_gulls.wav";
 			filename[5] = "norm_steamtrain.wav";
-			filename[6] = "norm_440_45-45.wav";
-			filename[7] = "norm_440_0-0_660_90-0.wav";
+			filename[6] = "norm_440_45_45.wav";
+			filename[7] = "norm_440_0_0_660_90_0.wav";
 			for (int i = 0; i < NUM_OF_FILES; i++){
 				fullPath[i] = sp.find(filename[i]).filepath();
 
@@ -179,7 +179,7 @@ public:
 				grani[i].setStretch(g_stretch);
 				grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
 				// grani.openFile("./examples/_granulatorTest/sine440_44k.wav");
-				grani[i].openFile("./examples/_granulatorTest/organ_fade.wav");
+				grani[i].openFile("./data/samples/organ_fade.wav");
 				// grani[i].openFile("./examples/_granulatorTest/passport.wav");
 				grani[i].setVoices(g_N);
 			}
@@ -304,16 +304,16 @@ public:
 			g_stretch 	= Slider21.get();
 			g_random 		= Slider22.get();
 
-			// std::cout << "Carrier: " << params.mCarrierFile
-			// 					<< "| Modulator: " << params.mModulatorFile
-			// 					<< "| Voices: " << g_N
-			// 					<< "| Duration: " << g_duration
-			// 					<< "| Ramp: " << g_ramp
-			// 					<< "| Offset: " << g_offset
-			// 					<< "| Delay: " << g_delay
-			// 					<< "| Stretch: " << g_stretch
-			// 					<< "| Random: " << g_random
-			// 					<< std::endl;
+			std::cout << "Carrier: " << params.mCarrierFile
+								<< "| Modulator: " << params.mModulatorFile
+								<< "| Voices: " << g_N
+								<< "| Duration: " << g_duration
+								<< "| Ramp: " << g_ramp
+								<< "| Offset: " << g_offset
+								<< "| Delay: " << g_delay
+								<< "| Stretch: " << g_stretch
+								<< "| Random: " << g_random
+								<< std::endl;
 
 			// std::cout << g_duration << std::endl;
 			for (int i = 0; i< SPATIAL_SAMPLING*SPATIAL_SAMPLING; i++){
@@ -583,14 +583,14 @@ public:
 						// cout << "Texture Buffer overrun!" << endl;
 					}
 
-					// mRmsCounter++;
-					// // cout << mRmsCounter << endl;
-					// if (mRmsCounter == mRmsSamples) {
-					// 	mRmsCounter = 0;
-					// 	rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
-					// 	memcpy(mState.rmsTexture, rmsBuffer, SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float));
-					// 	mStateMaker.set(mState);
-					// }
+					mRmsCounter++;
+					// cout << mRmsCounter << endl;
+					if (mRmsCounter == mRmsSamples) {
+						mRmsCounter = 0;
+						rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
+						memcpy(mState.rmsTexture, rmsBuffer, SPATIAL_SAMPLING * SPATIAL_SAMPLING * 3 * sizeof(float));
+						mStateMaker.set(mState);
+					}
 				} // End of Azi
 			} // End of Elev
 

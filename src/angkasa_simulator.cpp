@@ -733,7 +733,6 @@ public:
 
 	int main(int argc, char *argv[])
 	{
-
 		Angkasa app;
 
 		int midiDevice = 0;

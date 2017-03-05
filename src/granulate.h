@@ -20,7 +20,7 @@ class Granulate
   Granulate( void );
 
   //! Constructor taking input audio file and number of voices arguments.
-  Granulate( unsigned int nVoices, std::string fileName, bool typeRaw = false );
+  Granulate( unsigned int nVoices, int projectedBufferSize );
 
   //! Class destructor.
   ~Granulate( void );
@@ -30,12 +30,24 @@ class Granulate
   //! Write current frame to ring buffer
   void writeData( double ringBufferValue );
 
+  //! Write current frame to ring buffer
+  int getNumOfGatedGrains();
+
+  //! Set the treshold for triggering grains
+  void setThreshold (float rmsGain, float rmsThreshold);
+
   //! Load a monophonic soundfile to be "granulated".
   /*!
     An StkError will be thrown if the file is not found, its format
     is unknown or unsupported, or the file has more than one channel.
   */
-  void openFile( std::string fileName, bool typeRaw = false );
+  void openFile( int projectedBufferSize );
+
+  // Setup for granulation
+  // void setup( int projectedBufferSize );
+
+  //! Project Signal for each granular stream
+  void getProjectedSignal( Array<double> projectedSignal );
 
   //! Reset the file pointer and all existing grains to the file start.
   /*!
@@ -100,10 +112,10 @@ class Granulate
     which case an out-of-range value will trigger an StkError
     exception. \sa lastFrame()
   */
-  double lastOut( unsigned int channel = 0 );
+  double lastOut();
 
   //! Compute one sample frame and return the specified \c channel value.
-  double tick( unsigned int channel = 0 );
+  double tick();
 
   //! Fill the StkFrames object with computed sample frames, starting at the specified channel.
   /*!
@@ -137,12 +149,16 @@ class Granulate
     double pointer;
     unsigned long startPointer;
     unsigned int repeats;
+    float rms;
+    float rmsAccum;
+    bool gatedActive;
     GrainState state;
 
     // Default constructor.
     Grain()
       :eScaler(0.0), eRate(0.0), attackCount(0), sustainCount(0), decayCount(0),
-       delayCount(0), counter(0), pointer(0), startPointer(0), repeats(0), state(GRAIN_STOPPED) {}
+       delayCount(0), counter(0), pointer(0), startPointer(0), repeats(0), rms(0),
+       rmsAccum(0), gatedActive(false), state(GRAIN_STOPPED) {}
   };
 
   void calculateGrain( Granulate::Grain& grain );
@@ -153,37 +169,34 @@ class Granulate
 
   std::vector<Grain> grains_;
   // Noise noise;
-  NoiseWhite<> noise;
+  NoiseWhite<> noise;//( 2.0 * rand() / (RAND_MAX + 1.0) - 1.0 )
+  // float noise;
   //long gPointer_;
   double gPointer_;
 
   // Global grain parameters.
+  unsigned int gNumOfGatedActiveGrains_;
   unsigned int gDuration_;
   unsigned int gRampPercent_;
   unsigned int gDelay_;
   unsigned int gStretch_;
   unsigned int stretchCounter_;
+  float gRmsThreshold_;
+  float gRmsGain_;
   int gOffset_;
   double gRandomFactor_;
   double gain_;
 
   float sampleRate_;
-  unsigned int numChannels_;
+  // unsigned int numChannels_;
   //!Generator- STK lastFrame_: Return an StkFrames reference to the last output sample frame.
-  Array<double> lastFrame_;
+  double lastFrame_;
 
 };
 
-inline double Granulate :: lastOut( unsigned int channel )
+inline double Granulate :: lastOut( )
 {
-#if defined(_STK_DEBUG_)
-  if ( channel >= lastFrame_.channels() ) {
-    oStream_ << "Granulate::lastOut(): channel argument is invalid!";
-    handleError( StkError::FUNCTION_ARGUMENT );
-  }
-#endif
-
-  return lastFrame_[channel];
+  return lastFrame_;
 }
 
 // inline Array<double>& Granulate :: tick( Array<double>& frames, unsigned int channel )

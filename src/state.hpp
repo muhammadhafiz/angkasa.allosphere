@@ -1,12 +1,13 @@
 #ifndef STATE_HPP
 #define STATE_HPP
 
+#define AUDIO_BLOCK_SIZE 1024 // default: 512
+#define SPATIAL_SAMPLING 12//15//30//12//18
+#define VIS_FPS 60
 
-#define SPATIAL_SAMPLING 10//15//30//12//18
 
 struct State {
 	float rmsTexture[SPATIAL_SAMPLING*SPATIAL_SAMPLING*3];
-	// float peakTexture[SPATIAL_SAMPLING*SPATIAL_SAMPLING*3];
 };
 
 

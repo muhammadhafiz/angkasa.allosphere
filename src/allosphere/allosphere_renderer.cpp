@@ -15,7 +15,7 @@
 #include "allocore/graphics/al_Shader.hpp"
 #include "alloutil/al_ShaderManager.hpp"
 
-#define AUDIO_BLOCK_SIZE 512
+// #define AUDIO_BLOCK_SIZE 512
 
 using namespace al;
 using namespace std;
@@ -77,7 +77,7 @@ public:
 		// mTexture.create();
 		// mTexture.resize(32, 32);
 
-		initWindow(Window::Dim(0,0, 600, 400), "SG AlloSphere Renderer", 60);
+		initWindow(Window::Dim(0,0, 600, 400), "Angkasa AlloSphere Renderer", VIS_FPS);
 		mStateTaker.start();
 
 //		light.ambient(Color(0.4, 0.4, 0.4, 1.0));
@@ -107,7 +107,7 @@ public:
 	virtual void loadShaders(){
 		shaderManager.vertLibCode = "#version 120\n";
 		shaderManager.vertLibCode.append("#define OMNI 1\n" + mOmni.glsl());
-		shaderManager.addShaderFile("point", "point.vert", "point.frag");
+		shaderManager.addShaderFile("al_point", "al_point.vert", "al_point.frag");
 	}
 
 	virtual void onAnimate(al_sec dt) override {
@@ -147,8 +147,8 @@ public:
 
 		g.blendAdd();
 		// Draw wireframe mesh
-		g.lineWidth(0.1);
-		g.color(1,1,1,0.25);
+		g.lineWidth(0.25);
+		g.color(1, 1, 1, 0.5);
 		g.draw(mWireframeMesh);
 		shader().end();
 
@@ -165,7 +165,7 @@ public:
 		glEnable(GL_POINT_SPRITE);
 		glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
 
-		ShaderProgram* s = shaderManager.get("point");
+		ShaderProgram* s = shaderManager.get("al_point");
 		s->begin();
 		omni().uniforms(*s);
 		s->uniform("texture0", 0);

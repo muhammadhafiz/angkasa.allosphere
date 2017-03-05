@@ -12,13 +12,13 @@ Granulate :: Granulate( void )
   gain_ = 1.0;
 }
 
-Granulate :: Granulate( unsigned int nVoices, std::string fileName, bool typeRaw )
+Granulate :: Granulate( unsigned int nVoices, int projectedBufferSize )
 {
   this->setGrainParameters(); // use default values
   this->setRandomFactor();
   gStretch_ = 0;
   stretchCounter_ = 0;
-  this->openFile( fileName, typeRaw );
+  this->openFile( projectedBufferSize );
   this->setVoices( nVoices );
 }
 
@@ -38,6 +38,15 @@ void Granulate :: setSampleRate( const float sr )
 
 void Granulate :: writeData( double ringBufferValue ) {
   ring_(ringBufferValue);
+}
+
+int Granulate :: getNumOfGatedGrains() {
+  return gNumOfGatedActiveGrains_;
+}
+
+void Granulate :: setThreshold ( float rmsGain, float rmsThreshold ) {
+  gRmsGain_ = rmsGain;
+  gRmsThreshold_ = rmsThreshold;
 }
 
 void Granulate :: setStretch( unsigned int stretchFactor )
@@ -79,25 +88,16 @@ void Granulate :: setRandomFactor( double randomness )
   gRandomFactor_ = 0.97 * randomness;
 };
 
-void Granulate :: openFile( std::string fileName, bool typeRaw )
+void Granulate :: openFile( int projectedBufferSize )
 {
-  // Attempt to load the soundfile data.
-  SoundFile file( fileName );
-  file.openRead();
 
   data_ = &ring_;
-  numChannels_ = file.channels();
-  data_->resize( file.frames(), numChannels_ );
-  ring_.resize( file.frames(), numChannels_ );
-  std::memset( data_->elems(), 0.0, file.frames() * sizeof(float));
-  std::memset( ring_.elems(), 0.0, file.frames() * sizeof(float));
-  // file.read( data_, file.frames() );
-  file.read( ring_.elems(), file.frames() );
-  lastFrame_.resize( 1, numChannels_);
+  data_->resize( projectedBufferSize );
+  ring_.resize( projectedBufferSize );
+  std::memset( data_->elems(), 0.0, projectedBufferSize * sizeof(float));
+  std::memset( ring_.elems(), 0.0, projectedBufferSize * sizeof(float));
 
-  for (unsigned int i = 0; i < numChannels_; i++){
-    lastFrame_[i] = 0.0;
-  }
+  lastFrame_ = 0.0;
 
   this->reset();
 
@@ -107,6 +107,11 @@ void Granulate :: openFile( std::string fileName, bool typeRaw )
   handleError( message.str(), StkError::DEBUG_PRINT );
 #endif
 
+}
+
+void Granulate :: getProjectedSignal( Array<double> projectedSignal )
+{
+  // std::memcpy(ring_.elems(), projectedSignal, file.frames() * numChannels_ * sizeof(float));
 }
 
 void Granulate :: reset( void )
@@ -123,14 +128,14 @@ void Granulate :: reset( void )
     grains_[i].state = GRAIN_STOPPED;
   }
 
-  for ( unsigned int i=0; i<numChannels_; i++ )
-    lastFrame_[i] = 0.0;
+    lastFrame_ = 0.0;
 
   // std::cout << nVoices << std::endl;
 }
 
 void Granulate :: setVoices( unsigned int nVoices )
 {
+  // std::cout << nVoices << std::endl;
 #if defined(_STK_DEBUG_)
   std::ostringstream message;
   message << "Granulate::setVoices: nVoices = " << nVoices << ", existing voices = " << grains_.size() << '.';
@@ -142,6 +147,7 @@ void Granulate :: setVoices( unsigned int nVoices )
 
   // Initialize new grain voices.
   size_t count;
+  // for ( size_t i=0; i<nVoices; i++ ) { //weird singing effect
   for ( size_t i=oldSize; i<nVoices; i++ ) {
     grains_[i].repeats = 0;
     count = ( i * gDuration_ * 0.001 * sampleRate_ / nVoices );
@@ -155,6 +161,23 @@ void Granulate :: setVoices( unsigned int nVoices )
 
 void Granulate :: calculateGrain( Granulate::Grain& grain )
 {
+  // std::cout << "ATTACK!!!" << std::endl;
+  size_t grainSize = (  gDuration_ * 0.001 * sampleRate_  );
+  grain.rms = 0;
+  grain.rmsAccum = 0;
+  for (int k = 0; k< grainSize; k++){
+    grain.rmsAccum += data_->operator[]( grain.startPointer + k ) *
+                      data_->operator[]( grain.startPointer + k ) ;
+  }
+  grain.rms = sqrt(grain.rmsAccum / (float) gDuration_) * gRmsGain_;
+  // std::cout << " rmsAccum: "<< grain.rmsAccum << std::endl;
+
+  if (grain.rms <= gRmsThreshold_){
+    grain.gatedActive = false;
+  }else{
+    grain.gatedActive = true;
+  }
+
   if ( grain.repeats > 0 ) {
     grain.repeats--;
     grain.pointer = grain.startPointer;
@@ -174,6 +197,7 @@ void Granulate :: calculateGrain( Granulate::Grain& grain )
   // Calculate duration and envelope parameters.
   double seconds = gDuration_ * 0.001;
   seconds += ( seconds * gRandomFactor_ * noise() );
+  // seconds += ( seconds * gRandomFactor_ * ( 2.0 * rand() / (RAND_MAX + 1.0) - 1.0 ) );
   unsigned long count = (unsigned long) ( seconds * sampleRate_ );
   grain.attackCount = (unsigned int) ( gRampPercent_ * 0.005 * count );
   grain.decayCount = grain.attackCount;
@@ -192,6 +216,7 @@ void Granulate :: calculateGrain( Granulate::Grain& grain )
   // Calculate delay parameter.
   seconds = gDelay_ * 0.001;
   seconds += ( seconds * gRandomFactor_ * noise() );
+  // seconds += ( seconds * gRandomFactor_ * ( 2.0 * rand() / (RAND_MAX + 1.0) - 1.0 ) );
   count = (unsigned long) ( seconds * sampleRate_ );
   grain.delayCount = count;
 
@@ -201,44 +226,36 @@ void Granulate :: calculateGrain( Granulate::Grain& grain )
   // Calculate offset parameter.
   seconds = gOffset_ * 0.001;
   seconds += ( seconds * gRandomFactor_ * std::abs( noise() ) );
+  // seconds += ( seconds * gRandomFactor_ * std::abs( ( 2.0 * rand() / (RAND_MAX + 1.0) - 1.0 ) ) );
   int offset = (int) ( seconds * sampleRate_ );
 
   // Add some randomization to the pointer start position.
   seconds = gDuration_ * 0.001 * gRandomFactor_ * noise();
+  // seconds = gDuration_ * 0.001 * gRandomFactor_ * ( 2.0 * rand() / (RAND_MAX + 1.0) - 1.0 );
   offset += (int) ( seconds * sampleRate_ );
   grain.pointer += offset;
   while ( grain.pointer >= data_->size() ) grain.pointer -= data_->size();
-  // if ( grain.pointer >= data_->size() ) {
-  //   // grain.pointer = 0;
-  //   std::cout << grain.pointer << std::endl;
-  // }
   if ( grain.pointer <  0 ) grain.pointer = 0;
   grain.startPointer = grain.pointer;
 }
 
-double Granulate :: tick( unsigned int channel )
+
+double Granulate :: tick()
 {
-#if defined(_STK_DEBUG_)
-  if ( channel >= data_->channels() ) {
-    oStream_ << "Granulate::tick(): channel argument and soundfile data are incompatible!";
-    handleError( StkError::FUNCTION_ARGUMENT );
-  }
-#endif
   // std::cout << grains_.size() << std::endl;
-  unsigned int i, j, nChannels = numChannels_;
-  for ( j=0; j<nChannels; j++ ) lastFrame_[j] = 0.0;
+  unsigned int i, j;
+  lastFrame_ = 0.0;
 
   if ( data_->size() == 0 ) return 0.0;
 
   double sample;
+  gNumOfGatedActiveGrains_ = 0;
   for ( i=0; i<grains_.size(); i++ ) {
-
     if ( grains_[i].counter == 0 ) { // Update the grain state.
-
       switch ( grains_[i].state ) {
 
       case GRAIN_STOPPED:
-        // We're done waiting between grains ... setup for new grain
+      // We're done waiting between grains ... setup for new grain
         this->calculateGrain( grains_[i] );
         break;
 
@@ -272,32 +289,33 @@ double Granulate :: tick( unsigned int channel )
 
         this->calculateGrain( grains_[i] );
       }
-    }
+  }
 
-    // Accumulate the grain outputs.
     if ( grains_[i].state > 0 ) {
-      for ( j=0; j<nChannels; j++ ) {
         // sample = ring_[ nChannels * grains_[i].pointer + j ];
-        sample = data_->operator[]( nChannels * grains_[i].pointer + j );
-
+        sample = data_->operator[]( grains_[i].pointer );
         if ( grains_[i].state == GRAIN_FADEIN || grains_[i].state == GRAIN_FADEOUT ) {
           sample *= grains_[i].eScaler;
           grains_[i].eScaler += grains_[i].eRate;
         }
 
-        lastFrame_[j] += sample;
-      }
-
+        if (grains_[i].gatedActive == true){
+          // gNumOfGatedActiveGrains_++;
+          gNumOfGatedActiveGrains_ = 1;
+          // lastFrame_ += (sample * gain_);
+          lastFrame_ += sample;
+        }else{
+          lastFrame_ += 0;
+        }
 
       // Increment and check pointer limits.
       grains_[i].pointer++;
       if ( grains_[i].pointer >= data_->size() )
         grains_[i].pointer = 0;
     }
-
-    // Decrement counter for all states.
     grains_[i].counter--;
   }
+  // std::cout << gNumOfGatedActiveGrains_ << std::endl;
 
   // Increment our global file pointer at the stretch rate.
   if ( stretchCounter_++ == gStretch_ ) {
@@ -306,5 +324,5 @@ double Granulate :: tick( unsigned int channel )
     stretchCounter_ = 0;
   }
 
-  return lastFrame_[channel];
+  return lastFrame_;
 }

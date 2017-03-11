@@ -24,7 +24,7 @@ using namespace al;
 using namespace std;
 
 // #define AUDIO_BLOCK_SIZE 1024 // default: 512
-#define NUM_OF_FILES 8 // num of loaded files
+#define NUM_OF_FILES 3 // num of loaded files
 #define TOTAL_SPATIAL_SAMPLING SPATIAL_SAMPLING * SPATIAL_SAMPLING
 #define SIN sin
 #define COS cos
@@ -33,7 +33,7 @@ using namespace std;
 
 ParameterMIDI parameterMIDI; // KORG nanoKONTROL2
 Parameter Slider0("RMS Gain", "", 1.0, "", 0.0, 1.0);
-Parameter Slider1("RMS Threshold", "", 0.0, "", 0.0, 1.0);
+Parameter Slider1("RMS Threshold", "", 0.0, "", 0.0, 0.3);
 Parameter Slider2("Master Mix", "", 0.0, "", 0.0, 1.0);
 
 Parameter Slider7("Master Gain", "", 0.5, "", 0.0, 1.0);
@@ -96,13 +96,13 @@ public:
 			// 0 = carrier, i.e. source, 1 = modulator
 			// Problem when source and modulator is the same file. Try to avoid!
 			filename[0] = "norm_organ.wav";
-			filename[1] = "norm_fireworks.wav";
-			filename[2] = "norm_insects.wav";
-			filename[3] = "norm_gamelan_bapangSelisir.wav";
-			filename[4] = "norm_gulls.wav";
-			filename[5] = "norm_steamtrain.wav";
-			filename[6] = "norm_440_45-45.wav";
-			filename[7] = "norm_440_0-0_660_90-0.wav";
+			filename[1] = "norm_insects_long.wav";
+			// filename[2] = "norm_insects.wav";
+			filename[2] = "norm_gamelan_bapangSelisir.wav";
+			// filename[4] = "norm_gulls.wav";
+			// filename[5] = "norm_steamtrain.wav";
+			// filename[6] = "norm_440_45-45.wav";
+			// filename[7] = "norm_440_0-0_660_90-0.wav";
 			for (int i = 0; i < NUM_OF_FILES; i++){
 				fullPath[i] = sp.find(filename[i]).filepath();
 
@@ -151,6 +151,8 @@ public:
 			} else initAudio(mSoundFile[0]->frameRate(), AUDIO_BLOCK_SIZE, 2, 0);
 			mStateMaker.start();
 
+			currentFile = params.mCarrierFile;
+			changeSample = false;
 			framesRead[0]= 0;
 			framesRead[1]= 0;
 			channelWeights[0] = 2.0;
@@ -171,8 +173,10 @@ public:
 			g_delay = 0;
 			g_stretch = 1;
 			g_random = 0.;
+			numSamplesInFile = mSoundFile[0]->frames();
 
 			for (int i = 0; i < TOTAL_SPATIAL_SAMPLING; i++) {
+				numSamplesReadFromFile[i] = 0;
 				grani[i].setSampleRate(preProjectedFile->frameRate());
 				grani[i].setRandomFactor(g_random);
 				grani[i].setStretch(g_stretch);
@@ -310,16 +314,21 @@ public:
 				signal_mix[2] = (masterMix*2) - 1;
 			}
 
-			// std::cout << "Carrier: " << params.mCarrierFile
-			// 					<< "| Modulator: " << params.mModulatorFile
-			// 					<< "| Voices: " << g_N
-			// 					<< "| Duration: " << g_duration
-			// 					<< "| Ramp: " << g_ramp
-			// 					<< "| Offset: " << g_offset
-			// 					<< "| Delay: " << g_delay
-			// 					<< "| Stretch: " << g_stretch
-			// 					<< "| Random: " << g_random
+			// std::cout << "RMS GAIN " << params.mRmsGain
+			// 					<< "RMS Threshold" << Slider1.get()
 			// 					<< std::endl;
+
+
+			std::cout << "Carrier: " << params.mCarrierFile
+								<< "| Modulator: " << params.mModulatorFile
+								<< "| Voices: " << g_N
+								<< "| Duration: " << g_duration
+								<< "| Ramp: " << g_ramp
+								<< "| Offset: " << g_offset
+								<< "| Delay: " << g_delay
+								<< "| Stretch: " << g_stretch
+								<< "| Random: " << g_random
+								<< std::endl;
 		}
 
 		virtual void onDraw(Graphics &g) override {
@@ -414,7 +423,7 @@ public:
 					float cosAzi = COS(azimuth);
 
 					int STgrain_index = azimuthIndex * SPATIAL_SAMPLING + elevIndex;
-
+					numSamplesReadFromFile[STgrain_index] = 0;
 					// Pointer for buffer 0
 					float *w_0 = readBuffer[0];
 					float *x_0 = readBuffer[0] + 1;
@@ -436,6 +445,29 @@ public:
 					grani[STgrain_index].setThreshold(params.mRmsGain, Slider1.get());
 
 					for (int frame = 0; frame < AUDIO_BLOCK_SIZE; frame++) {
+
+						if (params.mCarrierFile != currentFile){
+							changeSample = true;
+						}
+						if(changeSample == true){
+							if (numSamplesReadFromFile[STgrain_index] < numSamplesInFile){
+								// cout << "changesample!" << endl;
+								float STgrain_mix = (*w_0 * sqrt2)
+															  	+ (*x_0 * COS(azimuth) * cosElev)
+																  + (*y_0 * SIN(azimuth) * cosElev)
+															  	+ (*z_0 * SIN(elev));
+
+								grani[STgrain_index].writeData(STgrain_mix);
+								numSamplesReadFromFile[STgrain_index]++;
+							}
+							else if (numSamplesReadFromFile[STgrain_index] >= numSamplesInFile){
+								numSamplesReadFromFile[STgrain_index] = 0;
+								changeSample = false;
+								break;
+								cout << "reset!" << endl;
+							}
+						}
+
 
 						// Tick granulation engine
 						STslice[STgrain_index] = grani[STgrain_index].tick();
@@ -459,7 +491,9 @@ public:
 						*z_r += Z_reconstruct;
 
 						// Increment pointer by 4 (4 channel interleave Ambi files)
+						w_0+=4; x_0+=4; y_0+=4; z_0+=4;
 						w_r+=4; x_r+=4; y_r+=4; z_r+=4;
+						currentFile = params.mCarrierFile;
 					} // End of audio frames
 
 					mRms[STgrain_index] = sqrt(mRmsAccum[STgrain_index] / (float) AUDIO_BLOCK_SIZE);
@@ -581,6 +615,10 @@ public:
 		float masterMix;
 		float signal_mix[3];
 		float rmsThreshold;
+		bool changeSample;
+		int currentFile;
+		int numSamplesInFile;
+		int numSamplesReadFromFile[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
 
 		Granulate grani[TOTAL_SPATIAL_SAMPLING];
 		int g_N;

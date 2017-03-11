@@ -7,5 +7,5 @@ void main() {
 
     //gl_FragColor = textureColor1; //vec4(1,1,1,0.1); //final_color;
     //gl_FragColor = (textureColor1*textureColor1)*5.0;
-    gl_FragColor = textureColor1*textureColor1*textureColor1;
+    gl_FragColor = (textureColor1*textureColor1*textureColor1) * 5.0;
 }

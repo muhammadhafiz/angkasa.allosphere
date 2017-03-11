@@ -2,7 +2,7 @@
 #define STATE_HPP
 
 #define AUDIO_BLOCK_SIZE 1024 // default: 512
-#define SPATIAL_SAMPLING 12//15//30//12//18
+#define SPATIAL_SAMPLING 15//15//30//12//18
 #define VIS_FPS 60
 
 

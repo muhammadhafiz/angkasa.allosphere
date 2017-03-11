@@ -169,7 +169,8 @@ void Granulate :: calculateGrain( Granulate::Grain& grain )
     grain.rmsAccum += data_->operator[]( grain.startPointer + k ) *
                       data_->operator[]( grain.startPointer + k ) ;
   }
-  grain.rms = sqrt(grain.rmsAccum / (float) gDuration_) * gRmsGain_;
+  // grain.rms = sqrt(grain.rmsAccum / (float) gDuration_) * gRmsGain_;
+  grain.rms = sqrt(grain.rmsAccum / (float) grainSize) * gRmsGain_;
   // std::cout << " rmsAccum: "<< grain.rmsAccum << std::endl;
 
   if (grain.rms <= gRmsThreshold_){

@@ -146,6 +146,7 @@ public:
 			params.mOverwriteSample = false;
 			framesRead[0]= 0;
 			framesRead[1]= 0;
+			framesRead[2]= 0;
 			channelWeights[0] = 2.0;
 			channelWeights[1] = 4.0;
 			channelWeights[2] = 4.0;
@@ -254,6 +255,9 @@ public:
 			drehbankKnob[20] = new Parameter("Grain Randomness_offset", "", 0., "", 0., 1.0);
 			drehbankKnob[21] = new Parameter("Grain Randomness_delay", "", 0., "", 0., 1.0);
 			drehbankKnob[22] = new Parameter("Grain Randomness_pointer", "", 0., "", 0., 1.0);
+			drehbankKnob[60] = new Parameter("Signal Mix 0", "", 0., "", 0., 1.0);
+			drehbankKnob[61] = new Parameter("Signal Mix 1", "", 0., "", 0., 1.0);
+			drehbankKnob[62] = new Parameter("Signal Mix 2", "", 0., "", 0., 1.0);
 
 
 			drehbank->connectControl(*drehbankKnob[0], 0, 1);
@@ -270,6 +274,9 @@ public:
 			drehbank->connectControl(*drehbankKnob[20], 20, 1);
 			drehbank->connectControl(*drehbankKnob[21], 21, 1);
 			drehbank->connectControl(*drehbankKnob[22], 22, 1);
+			drehbank->connectControl(*drehbankKnob[60], 60, 1);
+			drehbank->connectControl(*drehbankKnob[61], 61, 1);
+			drehbank->connectControl(*drehbankKnob[62], 62, 1);
 
 
 			// string pName_offset = "STG_offset";
@@ -360,7 +367,7 @@ public:
 			slider[19] = new glv::Slider;
 			slider[19]->interval(0, numSamplesInFile-1);
 			*layout[0] << *slider[19];
-			*layout[0] << new glv::Label("Pointer position");
+			*layout[0] << new glv::Label("Pointer Position");
 			// layout[0]->arrange();
 
 			for(int i = 0; i < 10; i++){
@@ -376,6 +383,18 @@ public:
 				*layout[0] << new glv::Label(drehbankKnob[index]->getName());
 				// layout[0]->arrange();
 			}
+			slider[60] = new glv::Slider;
+			slider[61] = new glv::Slider;
+			slider[62] = new glv::Slider;
+			slider[60]->interval(drehbankKnob[60]->min(), drehbankKnob[60]->max());
+			slider[61]->interval(drehbankKnob[61]->min(), drehbankKnob[61]->max());
+			slider[62]->interval(drehbankKnob[62]->min(), drehbankKnob[62]->max());
+			*layout[0] << *slider[60];
+			*layout[0] << new glv::Label("Signal 0");
+			*layout[0] << *slider[61];
+			*layout[0] << new glv::Label("Signal 1");
+			*layout[0] << *slider[62];
+			*layout[0] << new glv::Label("Signal 2");
 			// layout[0]->arrange();
 			// *gui << *layout[0];
 
@@ -394,10 +413,10 @@ public:
 			// 	data.assign(-0.9, 3, i);
 			// }
 
-			plotFunction1D[0] = new glv::PlotFunction1D(glv::Color(0.75,0.75,0.75));
-			plotFunction1D[1] = new glv::PlotFunction1D(glv::Color(0.5,0,0));
-			plotFunction1D[2] = new glv::PlotFunction1D(glv::Color(0,0.5,0));
-			plotFunction1D[3] = new glv::PlotFunction1D(glv::Color(0,0,0.5));
+			plotFunction1D[0] = new glv::PlotFunction1D(glv::Color(0.75, 0.75, 0.75, 1.0));
+			plotFunction1D[1] = new glv::PlotFunction1D(glv::Color(0.75, 0.00, 0.00, 1.0));
+			plotFunction1D[2] = new glv::PlotFunction1D(glv::Color(0.00, 0.75, 0.00, 1.0));
+			plotFunction1D[3] = new glv::PlotFunction1D(glv::Color(0.25, 0.00, 1.00, 1.0));
 
 			plotTest[0] = new glv::Plot(glv::Rect(    0, 0* plotWidth/4, plotWidth,  plotWidth/4), *plotFunction1D[0]);
 			plotTest[1] = new glv::Plot(glv::Rect(    0, 0* plotWidth/4, plotWidth,  plotWidth/4), *plotFunction1D[1]);
@@ -654,18 +673,18 @@ public:
 			slider[13]->setValue(params.mRmsThreshold);
 			slider[15]->setValue(params.mMasterGain);
 			slider[19]->setValue(grani[0].getGrainPointer());
+			slider[60]->setValue(signal_mix[0]);
+			slider[61]->setValue(signal_mix[1]);
+			slider[62]->setValue(signal_mix[2]);
 
 			button[0]->setValue(params.mOverwriteSample);
 			button[1]->setValue(params.mResetAll);
 
-			// for (int i = 0; i< AUDIO_BLOCK_SIZE; i++){
-			// 	// data.assign(1, 0, i, i+1);
-			// 	// data.assign(0, 1, i, i+1);
-			// 	data.assign(0.9, 0, i);
-			// 	data.assign(0.25, 1, i);
-			// 	data.assign(-0.25, 2, i);
-			// 	data.assign(-0.9, 3, i);
-			// }
+			for (int i = 0; i< AUDIO_BLOCK_SIZE; i++){
+				for (int j= 0; j< 4; j++){
+				data.assign(gui_reconstruct[(i*4)+j], j, i);
+				}
+			}
 			// nd->setValue(params.mCarrierFile);
 			// cout << grani[0].getGrainPointer() << endl;
 
@@ -682,18 +701,26 @@ public:
 			memset(numOfGatedGrains, 0, sizeof(float) * AUDIO_BLOCK_SIZE);
 
 			// Read into buffer per CB
-			framesRead[0] = mSoundFile[params.mCarrierFile]->read(readBuffer[0], AUDIO_BLOCK_SIZE);
-			framesRead[1] = mSoundFile[params.mModulatorFile]->read(readBuffer[1], AUDIO_BLOCK_SIZE);
-			if (framesRead[0] != AUDIO_BLOCK_SIZE || framesRead[1] != AUDIO_BLOCK_SIZE) {
-				cout << "buffer overrun! framesRead[0]: " << framesRead[0] << " frames" << endl;
-				cout << "buffer overrun! framesRead[1]: " << framesRead[1] << " frames" << endl;
-			}
+			// framesRead[0] = mSoundFile[params.mCarrierFile]->read(readBuffer[0], AUDIO_BLOCK_SIZE);
+			// framesRead[1] = mSoundFile[params.mModulatorFile]->read(readBuffer[1], AUDIO_BLOCK_SIZE);
+			// if (framesRead[0] != AUDIO_BLOCK_SIZE || framesRead[1] != AUDIO_BLOCK_SIZE) {
+			// 	cout << "buffer overrun! framesRead[0]: " << framesRead[0] << " frames" << endl;
+			// 	cout << "buffer overrun! framesRead[1]: " << framesRead[1] << " frames" << endl;
+			// }
+
+			// Read into buffer per CB
+			// framesRead[0] = mSoundFile[params.mCarrierFile]->read(readBuffer[0], AUDIO_BLOCK_SIZE);
+			framesRead[0] = mSoundFile[0]->read(readBuffer[0], AUDIO_BLOCK_SIZE);
+			framesRead[1] = mSoundFile[1]->read(readBuffer[1], AUDIO_BLOCK_SIZE);
+			framesRead[2] = mSoundFile[2]->read(readBuffer[2], AUDIO_BLOCK_SIZE);
 
 			// params.mRmsGain = Slider0->get();
 			// params.mRmsThreshold = Slider1->get();
 			// params.mMasterGain = Slider7->get();
 			//
-
+			signal_mix[0] = drehbankKnob[60]->get();
+			signal_mix[1] = drehbankKnob[61]->get();
+			signal_mix[2] = drehbankKnob[62]->get();
 			// // Granulation parameters
 			// g_N 				= Slider16->get();
 			// g_duration 	= Slider17->get();
@@ -745,6 +772,9 @@ public:
 			// 	grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
 			// }
 
+			for (int frame = 0; frame < AUDIO_BLOCK_SIZE*4; frame++) {
+				mixedReadBuffer[frame] = (readBuffer[0][frame]* signal_mix[0]) + (readBuffer[1][frame]* signal_mix[1]) + (readBuffer[2][frame]* signal_mix[2]);
+			}
 
 			// Pointer for output RMS, NxN
 			float *rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
@@ -761,17 +791,22 @@ public:
 
 					int STgrain_index = azimuthIndex * SPATIAL_SAMPLING + elevIndex;
 					// numSamplesReadFromFile[STgrain_index] = 0;
-					// Pointer for buffer 0
-					float *w_0 = readBuffer[0];
-					float *x_0 = readBuffer[0] + 1;
-					float *y_0 = readBuffer[0] + 2;
-					float *z_0 = readBuffer[0] + 3;
+					float *w_0 = mixedReadBuffer;
+					float *x_0 = mixedReadBuffer + 1;
+					float *y_0 = mixedReadBuffer + 2;
+					float *z_0 = mixedReadBuffer + 3;
 
-					// Pointer for buffer 1
-					float *w_1 = readBuffer[1];
-					float *x_1 = readBuffer[1] + 1;
-					float *y_1 = readBuffer[1] + 2;
-					float *z_1 = readBuffer[1] + 3;
+					// // // Pointer for buffer 0
+					// float *w_0 = readBuffer[0];
+					// float *x_0 = readBuffer[0] + 1;
+					// float *y_0 = readBuffer[0] + 2;
+					// float *z_0 = readBuffer[0] + 3;
+
+					// // Pointer for buffer 1
+					// float *w_1 = readBuffer[1];
+					// float *x_1 = readBuffer[1] + 1;
+					// float *y_1 = readBuffer[1] + 2;
+					// float *z_1 = readBuffer[1] + 3;
 
 					// Pointer for reconstructed buffer
 					float *w_r = reconstructAmbiBuffer;
@@ -843,10 +878,10 @@ public:
 			// float * w_0 = readBuffer[0];
 			// float * w_r = reconstructAmbiBuffer;
 			// Pointer for reconstructed buffer
-			float *gui_w_r = reconstructAmbiBuffer;
-			float *gui_x_r = reconstructAmbiBuffer + 1;
-			float *gui_y_r = reconstructAmbiBuffer + 2;
-			float *gui_z_r = reconstructAmbiBuffer + 3;
+			// float *gui_w_r = reconstructAmbiBuffer;
+			// float *gui_x_r = reconstructAmbiBuffer + 1;
+			// float *gui_y_r = reconstructAmbiBuffer + 2;
+			// float *gui_z_r = reconstructAmbiBuffer + 3;
 			for (int frame = 0; frame < AUDIO_BLOCK_SIZE; frame++){
 				// cout << "frame "<< frame << " has a total grain of " << numOfGatedGrains[frame] << endl;
 				// AUDIO OUTPUT
@@ -875,23 +910,24 @@ public:
 				// for (int i = 0; i< AUDIO_BLOCK_SIZE; i++){
 				// 	// data.assign(1, 0, i, i+1);
 				// 	// data.assign(0, 1, i, i+1);
+
 				// glv::Data& d = data;
 				// d.assign(*gui_w_r, 0, frame);
-				// d.assign(*gui_x_r, 1, frame);
-				// d.assign(*gui_y_r, 2, frame);
-				// d.assign(*gui_z_r, 3, frame);
+				// d.assign(*gui_w_r, 1, frame);
+				// d.assign(*gui_w_r, 2, frame);
+				// d.assign(*gui_w_r, 3, frame);
 				// }
 
 				// TEMP: Draw the waveforms
-				// originalWonly[frame] = *w_0;
+				// originalWonly[frame] = w_0;
 				// w_0 += 4;
-				// 	reconstructWonly[frame] = *w_r;
-				gui_w_r += 4; gui_x_r +=4; gui_y_r += 4; gui_z_r +=4;
+				// gui_reconstruct[frame] = *gui_w_r;
+				// gui_reconstruct[frame+1] = *gui_x_r;
+				// gui_reconstruct[frame+2] = *gui_y_r;
+				// gui_reconstruct[frame+3] = *gui_z_r;
+				// gui_w_r += 4; gui_x_r +=4; gui_y_r += 4; gui_z_r +=4;
 			}
-			// data.assign(*reconstructAmbiBuffer, 0, 0, AUDIO_BLOCK_SIZE);
-			// data.assign(*reconstructAmbiBuffer + 1, 1, 0, AUDIO_BLOCK_SIZE);
-			// data.assign(*reconstructAmbiBuffer + 2, 2, 0, AUDIO_BLOCK_SIZE);
-			// data.assign(*reconstructAmbiBuffer + 3, 3, 0, AUDIO_BLOCK_SIZE);
+			memcpy(gui_reconstruct, reconstructAmbiBuffer, sizeof(float) * AUDIO_BLOCK_SIZE * 4);
 			spatializer->finalize(io);
 		} // End of onSound
 
@@ -964,15 +1000,17 @@ public:
 		SoundFile *preProjectedFile;
 		string filename[NUM_OF_FILES];
 		string fullPath[NUM_OF_FILES];
-		int framesRead[2];
+		int framesRead[3];
 		float channelWeights[4];
 
 		// int numOfGatedGrains[AUDIO_BLOCK_SIZE];
 		float STslice[TOTAL_SPATIAL_SAMPLING];
-		float readBuffer[2][AUDIO_BLOCK_SIZE * 4];
+		float mixedReadBuffer[AUDIO_BLOCK_SIZE * 4];
+		float readBuffer[3][AUDIO_BLOCK_SIZE * 4];
 		float reconstructAmbiBuffer[AUDIO_BLOCK_SIZE * 4];
-		float reconstructWonly[AUDIO_BLOCK_SIZE];
-		float originalWonly[AUDIO_BLOCK_SIZE];
+		float gui_reconstruct[AUDIO_BLOCK_SIZE * 4];
+		// float reconstructWonly[AUDIO_BLOCK_SIZE];
+		// float originalWonly[AUDIO_BLOCK_SIZE];
 
 		float masterMix;
 		float signal_mix[3];
@@ -1031,7 +1069,7 @@ public:
 
 		// GUI
 		GLVBinding *gui;
-		glv::Slider *slider[20];
+		glv::Slider *slider[NUM_DREHBANK_KNOBS];
 		glv::Button *button[2];
 		glv::NumberDialer *nd;
 		glv::Table *layout[2];

@@ -140,6 +140,16 @@ int Granulate :: getGrainPointer()
 void Granulate :: resetGlobalPointer( void )
 {
   gPointer_ = 0;
+  // size_t count;
+  // size_t nVoices = (unsigned int)grains_.size();
+  // for ( unsigned int i=0; i<grains_.size(); i++ ) {
+  //   grains_[i].pointer = gPointer_;
+  //   grains_[i].repeats = 0;
+  //   count = ( i * gDuration_ * 0.001 * sampleRate_ / nVoices );
+  //   grains_[i].counter = count;
+  //   grains_[i].state = GRAIN_STOPPED;
+  // }
+
   for ( unsigned int i=0; i<grains_.size(); i++ ) {
     grains_[i].pointer = gPointer_;
   }

@@ -24,6 +24,7 @@ Granulate :: Granulate( unsigned int nVoices, int projectedBufferSize )
 
 Granulate :: ~Granulate( void )
 {
+  //  std::cout << "Object is being deleted" << std::endl;
 }
 
 void Granulate :: setSampleRate( const float sr )
@@ -44,7 +45,7 @@ int Granulate :: getNumOfGatedGrains() {
   return gNumOfGatedActiveGrains_;
 }
 
-void Granulate :: setThreshold ( float rmsGain, float rmsThreshold ) {
+void Granulate :: setThreshold ( double rmsGain, double rmsThreshold ) {
   gRmsGain_ = rmsGain;
   gRmsThreshold_ = rmsThreshold;
 }
@@ -80,22 +81,35 @@ void Granulate :: setGrainParameters( unsigned int duration, unsigned int rampPe
   gDelay_ = delay;
 }
 
-void Granulate :: setRandomFactor( double randomness )
+void Granulate :: setRandomFactor( double randomness_dur, double randomness_delay, double randomness_offset, double randomness_pointer )
 {
-  if ( randomness < 0.0 ) gRandomFactor_ = 0.0;
-  else if ( randomness > 1.0 ) gRandomFactor_ = 0.97;
+  if ( randomness_dur < 0.0 ) gRandomFactor_dur_ = 0.0;
+  else if ( randomness_dur > 1.0 ) gRandomFactor_dur_ = 0.97;
 
-  gRandomFactor_ = 0.97 * randomness;
+  if ( randomness_delay < 0.0 ) gRandomFactor_delay_ = 0.0;
+  else if ( randomness_delay > 1.0 ) gRandomFactor_delay_ = 0.97;
+
+  if ( randomness_offset < 0.0 ) gRandomFactor_offset_ = 0.0;
+  else if ( randomness_offset > 1.0 ) gRandomFactor_offset_ = 0.97;
+
+  if ( randomness_pointer < 0.0 ) gRandomFactor_pointer_ = 0.0;
+  else if ( randomness_pointer > 1.0 ) gRandomFactor_pointer_ = 0.97;
+
+
+  gRandomFactor_dur_ = 0.97 * randomness_dur;
+  gRandomFactor_delay_ = 0.97 * randomness_delay;
+  gRandomFactor_offset_ = 0.97 * randomness_offset;
+  gRandomFactor_pointer_ = 0.97 * randomness_pointer;
 };
 
 void Granulate :: openFile( int projectedBufferSize )
 {
 
-  data_ = &ring_;
-  data_->resize( projectedBufferSize );
+  // data_ = &ring_;
+  // data_->resize( projectedBufferSize );
   ring_.resize( projectedBufferSize );
-  std::memset( data_->elems(), 0.0, projectedBufferSize * sizeof(float));
-  std::memset( ring_.elems(), 0.0, projectedBufferSize * sizeof(float));
+  // std::memset( data_->elems(), 0.0, projectedBufferSize * sizeof(float));
+  std::memset( ring_.elems(), 0.0, projectedBufferSize * sizeof(double));
 
   lastFrame_ = 0.0;
 
@@ -114,8 +128,26 @@ void Granulate :: getProjectedSignal( Array<double> projectedSignal )
   // std::memcpy(ring_.elems(), projectedSignal, file.frames() * numChannels_ * sizeof(float));
 }
 
+int Granulate :: getGrainPointer()
+{
+  for ( unsigned int i=0; i<grains_.size(); i++ ) {
+    return grains_[i].pointer;
+    // std::cout << grains_[i].pointer << std::endl;
+  }
+  // std::memcpy(ring_.elems(), projectedSignal, file.frames() * numChannels_ * sizeof(float));
+}
+
+void Granulate :: resetGlobalPointer( void )
+{
+  gPointer_ = 0;
+  for ( unsigned int i=0; i<grains_.size(); i++ ) {
+    grains_[i].pointer = gPointer_;
+  }
+}
+
 void Granulate :: reset( void )
 {
+  // std::cout << "RESET!" << std::endl;
   gPointer_ = 0;
 
   // Reset grain parameters.
@@ -156,22 +188,30 @@ void Granulate :: setVoices( unsigned int nVoices )
     grains_[i].state = GRAIN_STOPPED;
   }
 
-  gain_ = 1.0 / grains_.size();
+  gain_ = 1.0;
+  // gain_ = 1.0 / grains_.size();
+  // gain_ = 1.0 / nVoices;
 }
 
 void Granulate :: calculateGrain( Granulate::Grain& grain )
 {
+  // this->reset();
   // std::cout << "ATTACK!!!" << std::endl;
   size_t grainSize = (  gDuration_ * 0.001 * sampleRate_  );
   grain.rms = 0;
   grain.rmsAccum = 0;
   for (int k = 0; k< grainSize; k++){
-    grain.rmsAccum += data_->operator[]( grain.startPointer + k ) *
-                      data_->operator[]( grain.startPointer + k ) ;
+    // grain.rmsAccum += data_->operator[]( grain.startPointer + k ) *
+    //                   data_->operator[]( grain.startPointer + k ) ;
+
+    grain.rmsAccum += ring_[ grain.startPointer + k ] *
+                      ring_[ grain.startPointer + k ];
   }
   // grain.rms = sqrt(grain.rmsAccum / (float) gDuration_) * gRmsGain_;
-  grain.rms = sqrt(grain.rmsAccum / (float) grainSize) * gRmsGain_;
-  // std::cout << " rmsAccum: "<< grain.rmsAccum << std::endl;
+  // grain.rms = sqrt(grain.rmsAccum / (float) grainSize) * gRmsGain_;
+  grain.rms = sqrt(grain.rmsAccum / (double) grainSize) * gRmsGain_;
+  // std::cout << " rms: "<< grain.rms << std::endl;
+  // std::cout << " value: "<< ring_[ grain.startPointer] << std::endl;
 
   if (grain.rms <= gRmsThreshold_){
     grain.gatedActive = false;
@@ -197,8 +237,7 @@ void Granulate :: calculateGrain( Granulate::Grain& grain )
 
   // Calculate duration and envelope parameters.
   double seconds = gDuration_ * 0.001;
-  seconds += ( seconds * gRandomFactor_ * noise() );
-  // seconds += ( seconds * gRandomFactor_ * ( 2.0 * rand() / (RAND_MAX + 1.0) - 1.0 ) );
+  seconds += ( seconds * gRandomFactor_dur_ * noise() );
   unsigned long count = (unsigned long) ( seconds * sampleRate_ );
   grain.attackCount = (unsigned int) ( gRampPercent_ * 0.005 * count );
   grain.decayCount = grain.attackCount;
@@ -216,8 +255,7 @@ void Granulate :: calculateGrain( Granulate::Grain& grain )
 
   // Calculate delay parameter.
   seconds = gDelay_ * 0.001;
-  seconds += ( seconds * gRandomFactor_ * noise() );
-  // seconds += ( seconds * gRandomFactor_ * ( 2.0 * rand() / (RAND_MAX + 1.0) - 1.0 ) );
+  seconds += ( seconds * gRandomFactor_delay_ * noise() );
   count = (unsigned long) ( seconds * sampleRate_ );
   grain.delayCount = count;
 
@@ -226,17 +264,17 @@ void Granulate :: calculateGrain( Granulate::Grain& grain )
 
   // Calculate offset parameter.
   seconds = gOffset_ * 0.001;
-  seconds += ( seconds * gRandomFactor_ * std::abs( noise() ) );
-  // seconds += ( seconds * gRandomFactor_ * std::abs( ( 2.0 * rand() / (RAND_MAX + 1.0) - 1.0 ) ) );
+  seconds += ( seconds * gRandomFactor_offset_ * std::abs( noise() ) );
   int offset = (int) ( seconds * sampleRate_ );
 
   // Add some randomization to the pointer start position.
-  seconds = gDuration_ * 0.001 * gRandomFactor_ * noise();
-  // seconds = gDuration_ * 0.001 * gRandomFactor_ * ( 2.0 * rand() / (RAND_MAX + 1.0) - 1.0 );
+  seconds = gDuration_ * 0.001 * gRandomFactor_pointer_ * noise();
   offset += (int) ( seconds * sampleRate_ );
   grain.pointer += offset;
-  while ( grain.pointer >= data_->size() ) grain.pointer -= data_->size();
+  // while ( grain.pointer >= data_->size() ) grain.pointer -= data_->size();
+  while ( grain.pointer >= ring_.size() ) grain.pointer -= ring_.size();
   if ( grain.pointer <  0 ) grain.pointer = 0;
+
   grain.startPointer = grain.pointer;
 }
 
@@ -247,7 +285,7 @@ double Granulate :: tick()
   unsigned int i, j;
   lastFrame_ = 0.0;
 
-  if ( data_->size() == 0 ) return 0.0;
+  if ( ring_.size() == 0 ) return 0.0;
 
   double sample;
   gNumOfGatedActiveGrains_ = 0;
@@ -293,8 +331,8 @@ double Granulate :: tick()
   }
 
     if ( grains_[i].state > 0 ) {
-        // sample = ring_[ nChannels * grains_[i].pointer + j ];
-        sample = data_->operator[]( grains_[i].pointer );
+        sample = ring_[ grains_[i].pointer ];
+        // sample = data_->operator[]( grains_[i].pointer );
         if ( grains_[i].state == GRAIN_FADEIN || grains_[i].state == GRAIN_FADEOUT ) {
           sample *= grains_[i].eScaler;
           grains_[i].eScaler += grains_[i].eRate;
@@ -303,15 +341,15 @@ double Granulate :: tick()
         if (grains_[i].gatedActive == true){
           // gNumOfGatedActiveGrains_++;
           gNumOfGatedActiveGrains_ = 1;
-          // lastFrame_ += (sample * gain_);
-          lastFrame_ += sample;
+          lastFrame_ += (sample * gain_);
+          // lastFrame_ += sample;
         }else{
           lastFrame_ += 0;
         }
 
       // Increment and check pointer limits.
       grains_[i].pointer++;
-      if ( grains_[i].pointer >= data_->size() )
+      if ( grains_[i].pointer >= ring_.size() )
         grains_[i].pointer = 0;
     }
     grains_[i].counter--;
@@ -321,7 +359,7 @@ double Granulate :: tick()
   // Increment our global file pointer at the stretch rate.
   if ( stretchCounter_++ == gStretch_ ) {
     gPointer_++;
-    if ( (unsigned long) gPointer_ >= data_->size() ) gPointer_ = 0;
+    if ( (unsigned long) gPointer_ >= ring_.size() ) gPointer_ = 0;
     stretchCounter_ = 0;
   }
 

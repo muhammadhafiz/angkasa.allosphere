@@ -8,6 +8,8 @@
 #include "Cuttlebone/Cuttlebone.hpp"
 #include "Gamma/scl.h"
 #include "Gamma/tbl.h"
+#include "alloGLV/al_ControlGLV.hpp"
+#include "GLV/glv.h"
 
 #include "alloaudio/al_SoundfileBuffered.hpp"
 #include "allosphere/allospherespeakerlayouts.h"
@@ -26,44 +28,30 @@ using namespace std;
 // #define AUDIO_BLOCK_SIZE 1024 // default: 512
 #define NUM_OF_FILES 3 // num of loaded files
 #define TOTAL_SPATIAL_SAMPLING SPATIAL_SAMPLING * SPATIAL_SAMPLING
+#define NUM_DREHBANK_KNOBS TOTAL_SPATIAL_SAMPLING
 #define SIN sin
 #define COS cos
 // #define SIN gam::scl::sinT9
 // #define COS gam::scl::cosT8
 
-ParameterMIDI parameterMIDI; // KORG nanoKONTROL2
-Parameter Slider0("RMS Gain", "", 1.0, "", 0.0, 1.0);
-Parameter Slider1("RMS Threshold", "", 0.0, "", 0.0, 0.3);
-Parameter Slider2("Master Mix", "", 0.0, "", 0.0, 1.0);
-
-Parameter Slider7("Master Gain", "", 0.5, "", 0.0, 1.0);
-
-Parameter recButton("PrintOut Vals", "", 0.0, "", 0.0, 1.0);
-Parameter track_backward("Change Carrier (backward)", "", 0, "", 0, 1);
-Parameter track_forward("Change Carrier (forward)", "", 0, "", 0, 1);
-Parameter marker_backward("Change Modulator (backward)", "", 0, "", 0, 1);
-Parameter marker_forward("Change Modulator (forward)", "", 0, "", 0, 1);
-
-Parameter reset_grains("Reset Grains", "", 0.0, "", 0.0, 1.0);
-Parameter Slider16("Grain Voices", "", 1, "", 1, 20);
-Parameter Slider17("Grain Duration", "", 1, "", 1, 300);
-Parameter Slider18("Grain Ramp", "", 0, "", 0, 100);
-Parameter Slider19("Grain Offset", "", 0, "", -149, 150);
-Parameter Slider20("Grain Delay", "", 0, "", 0, 300);
-Parameter Slider21("Grain Stretch", "", 1, "", 1, 5);
-Parameter Slider22("Grain Randomness", "", 0., "", 0., 1.);
 
 class MeterParams {
 public:
 	MeterParams() :
+	mResetAll(0),
+	mOverwriteSample(0),
 	mMasterGain(0),
 	mRmsGain(1.0),
+	mRmsThreshold(0.0),
 	mCrossFade(0.0),
 	mCarrierFile(0),
 	mModulatorFile(1)
 	{}
+		bool mResetAll;
+		bool mOverwriteSample;
 		float mMasterGain;
 		float mRmsGain;
+		float mRmsThreshold;
 		float mCrossFade;
 		int mCarrierFile;
 		int mModulatorFile;
@@ -76,7 +64,7 @@ public:
 		mMeterValues(3, AlloFloat32Ty, SPATIAL_SAMPLING, SPATIAL_SAMPLING),
 		mNewRmsMeterValues(3, AlloFloat32Ty, SPATIAL_SAMPLING, SPATIAL_SAMPLING),
 		mTextureBuffer(((TOTAL_SPATIAL_SAMPLING * 3 * 4) + 1 ) * sizeof(float)),
-		mSpriteTex(16,16, Graphics::LUMINANCE, Graphics::FLOAT),
+		mSpriteTex(16, 16, Graphics::LUMINANCE, Graphics::FLOAT),
 		mStateMaker(defaultBroadcastIP())
 		{
 			addSphereWithTexcoords(mMesh, 1, SPATIAL_SAMPLING);
@@ -87,7 +75,7 @@ public:
 
 			gaussianSprite(mSpriteTex);
 
-			nav().pos(0,0,5);
+			nav().pos(0,0,6);
 			initWindow(Window::Dim(0,0, 600, 400), "Angkasa", VIS_FPS);
 
 			// Find Ambisonics files
@@ -95,9 +83,11 @@ public:
 			sp.addSearchPath(".", true);
 			// 0 = carrier, i.e. source, 1 = modulator
 			// Problem when source and modulator is the same file. Try to avoid!
+			// filename[0] = "norm_organ_fade.wav";
 			filename[0] = "norm_organ.wav";
-			filename[1] = "norm_insects_long.wav";
-			// filename[2] = "norm_insects.wav";
+			filename[1] = "norm_insects_1min.wav";
+			// filename[1] = "norm_insects_long.wav";
+			// filename[1] = "norm_insects.wav";
 			filename[2] = "norm_gamelan_bapangSelisir.wav";
 			// filename[4] = "norm_gulls.wav";
 			// filename[5] = "norm_steamtrain.wav";
@@ -134,7 +124,7 @@ public:
 
 			mRmsSamples = mSoundFile[0]->frameRate() / VIS_FPS;
 			// mRmsCounter = 0;
-			mRmsAccum.resize(SPATIAL_SAMPLING * SPATIAL_SAMPLING);
+			mRmsAccum.resize(TOTAL_SPATIAL_SAMPLING);
 			// TODO: use memset to write zeros instead
 			for (int i = 0; i < SPATIAL_SAMPLING * SPATIAL_SAMPLING; i++) {
 				mRmsAccum[i] = 0.0;
@@ -152,7 +142,8 @@ public:
 			mStateMaker.start();
 
 			currentFile = params.mCarrierFile;
-			changeSample = false;
+			// changeSample = false;
+			params.mOverwriteSample = false;
 			framesRead[0]= 0;
 			framesRead[1]= 0;
 			channelWeights[0] = 2.0;
@@ -172,13 +163,21 @@ public:
 			g_offset = 0;
 			g_delay = 0;
 			g_stretch = 1;
-			g_random = 0.;
+			// g_random = 0.;
+			g_randomDur = 0.;
+			g_randomOffset = 0.;
+			g_randomDelay = 0.;
+			g_randomPointer = 0.;
+
+
 			numSamplesInFile = mSoundFile[0]->frames();
 
 			for (int i = 0; i < TOTAL_SPATIAL_SAMPLING; i++) {
+				prevFile[i] = params.mCarrierFile;
 				numSamplesReadFromFile[i] = 0;
 				grani[i].setSampleRate(preProjectedFile->frameRate());
-				grani[i].setRandomFactor(g_random);
+				// grani[i].setRandomFactor(g_random);
+				grani[i].setRandomFactor(g_randomDur, g_randomDelay, g_randomOffset, g_randomPointer);
 				grani[i].setStretch(g_stretch);
 				grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
 				grani[i].openFile( preProjectedFile->frames() );
@@ -211,6 +210,266 @@ public:
 					}
 				}
 			}
+
+			// MIDI controller (Doepfer Drehbank)
+			drehbank = new ParameterMIDI;
+			int drehbank_midiPort = 0;
+			if(sim()) drehbank_midiPort = 4;
+			drehbank->init(drehbank_midiPort, false);
+
+			// g_stretch = 17 -> 32 (16 knobs, 9 STG each)
+			// g_offset = 33 -> 48 (16 knobs, 9 STG each)
+			// g_delay = 49 -> 64 (16 knobs, 9 STG each)
+			// ceil((i+1/9)+16)
+			// knobsPerSTG = TOTAL_SPATIAL_SAMPLING/ 16; //9
+			// knobsOffset = 16;
+
+			// for (int i = 0; i< TOTAL_SPATIAL_SAMPLING; i++){
+			// 	whichKnobSets = ceil(((float)i+1)/knobsPerSTG);
+			// 	g_offset_knob = whichKnobSets + knobsOffset;
+			// 	g_delay_knob = whichKnobSets + (knobsOffset * 2);
+			// 	g_stretch_knob = whichKnobSets + (knobsOffset * 3);
+			//
+			// 	// cout << g_offset_knob << endl;
+			// 	g_offset = drehbankKnob[g_offset_knob]->get();
+			// 	g_delay = drehbankKnob[g_delay_knob]->get();
+			// 	g_stretch = drehbankKnob[g_stretch_knob]->get();
+			// 	//
+			// 	grani[i].setStretch(g_stretch);
+			// 	grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
+			// }
+
+
+			drehbankKnob[0] = new Parameter("Grain Voices", "", 1, "", 1, 10);
+			drehbankKnob[1] = new Parameter("Grain Duration", "", 1, "", 1, 300);
+			drehbankKnob[2] = new Parameter("Grain Ramp", "", 0, "", 0, 100);
+			// drehbankKnob[3] = new Parameter("Grain Randomness", "", 0., "", 0., 0.1);
+			drehbankKnob[4] = new Parameter("Grain Offset", "", 0, "", -149, 150);
+			drehbankKnob[5] = new Parameter("Grain Delay", "", 0, "", 0, 300);
+			drehbankKnob[6] = new Parameter("Grain Stretch", "", 1, "", 1, 10);
+			drehbankKnob[12] = new Parameter("RMS Gain", "", 1.0, "", 0.0, 1.0);
+			drehbankKnob[13] = new Parameter("RMS Threshold", "", 0.0, "", 0.0, 0.3);
+			drehbankKnob[15] = new Parameter("Master Gain", "", 0.5, "", 0.0, 1.0);
+			drehbankKnob[17] = new Parameter("Grain Randomness_dur", "", 0., "", 0., 1.0);
+			drehbankKnob[20] = new Parameter("Grain Randomness_offset", "", 0., "", 0., 1.0);
+			drehbankKnob[21] = new Parameter("Grain Randomness_delay", "", 0., "", 0., 1.0);
+			drehbankKnob[22] = new Parameter("Grain Randomness_pointer", "", 0., "", 0., 1.0);
+
+
+			drehbank->connectControl(*drehbankKnob[0], 0, 1);
+			drehbank->connectControl(*drehbankKnob[1], 1, 1);
+			drehbank->connectControl(*drehbankKnob[2], 2, 1);
+			// drehbank->connectControl(*drehbankKnob[3], 3, 1);
+			drehbank->connectControl(*drehbankKnob[4], 4, 1);
+			drehbank->connectControl(*drehbankKnob[5], 5, 1);
+			drehbank->connectControl(*drehbankKnob[6], 6, 1);
+			drehbank->connectControl(*drehbankKnob[12], 12, 1);
+			drehbank->connectControl(*drehbankKnob[13], 13, 1);
+			drehbank->connectControl(*drehbankKnob[15], 15, 1);
+			drehbank->connectControl(*drehbankKnob[17], 17, 1);
+			drehbank->connectControl(*drehbankKnob[20], 20, 1);
+			drehbank->connectControl(*drehbankKnob[21], 21, 1);
+			drehbank->connectControl(*drehbankKnob[22], 22, 1);
+
+
+			// string pName_offset = "STG_offset";
+			// string pName_delay = "STG_delay";
+			// string pName_stretch = "STG_stretch";
+			//
+			// for(int i = 0; i< TOTAL_SPATIAL_SAMPLING; i++){
+			// 	whichKnobSets = floor(((float)i)/knobsPerSTG);
+			// 	g_offset_knob = whichKnobSets + knobsOffset;
+			// 	g_delay_knob = whichKnobSets + (knobsOffset * 2);
+			// 	g_stretch_knob = whichKnobSets + (knobsOffset * 3);
+			//
+			// 	pName_offset += std::to_string(i);
+			// 	pName_delay += std::to_string(i);
+			// 	pName_stretch += std::to_string(i);
+			//
+			// 	drehbankKnob[g_offset_knob] = new Parameter(pName_offset, "", 0, "", -149, 150);
+			// 	drehbankKnob[g_delay_knob] = new Parameter(pName_delay, "", 0, "", 0, 300);
+			// 	drehbankKnob[g_stretch_knob] = new Parameter(pName_stretch, "", 0, "", 1, 10);
+			//
+			// 	drehbank->connectControl(*drehbankKnob[g_offset_knob], g_offset_knob, 1);
+			// 	drehbank->connectControl(*drehbankKnob[g_delay_knob], g_delay_knob, 1);
+			// 	drehbank->connectControl(*drehbankKnob[g_stretch_knob], g_stretch_knob, 1);
+			// }
+
+			// MIDI controller (nanoKontrol2)
+			// nanoKontrol2 = new ParameterMIDI;
+			// int nanoKontrol2_midiPort = 0;
+			// if(sim()) nanoKontrol2_midiPort = 3;
+			// nanoKontrol2->init(nanoKontrol2_midiPort, false);
+			//
+			// Slider0 = new Parameter("RMS Gain", "", 1.0, "", 0.0, 1.0);
+			// Slider1 = new Parameter("RMS Threshold", "", 0.0, "", 0.0, 0.3);
+			// Slider2 = new Parameter("Master Mix", "", 0.0, "", 0.0, 1.0);
+			// Slider7 = new Parameter("Master Gain", "", 0.5, "", 0.0, 1.0);
+			// Slider16 = new Parameter("Grain Voices", "", 1, "", 1, 20);
+			// Slider17 = new Parameter("Grain Duration", "", 1, "", 1, 300);
+			// Slider18 = new Parameter("Grain Ramp", "", 0, "", 0, 100);
+			// Slider19 = new Parameter("Grain Offset", "", 0, "", -149, 150);
+			// Slider20 = new Parameter("Grain Delay", "", 0, "", 0, 300);
+			// Slider21 = new Parameter("Grain Stretch", "", 1, "", 1, 5);
+			// Slider22 = new Parameter("Grain Randomness", "", 0., "", 0., 0.1);
+			//
+			// recButton = new Parameter("PrintOut Vals", "", 0.0, "", 0.0, 1.0);
+			// track_backward = new Parameter("Change Carrier (backward)", "", 0, "", 0, 1);
+			// track_forward = new Parameter("Change Carrier (forward)", "", 0, "", 0, 1);
+			// marker_backward = new Parameter("Change Modulator (backward)", "", 0, "", 0, 1);
+			// marker_forward = new Parameter("Change Modulator (forward)", "", 0, "", 0, 1);
+			//
+			// nanoKontrol2->connectControl(*Slider0, 0, 1);
+			// nanoKontrol2->connectControl(*Slider1, 1, 1);
+			// nanoKontrol2->connectControl(*Slider2, 2, 1);
+			// nanoKontrol2->connectControl(*Slider7, 7, 1);
+			// nanoKontrol2->connectControl(*Slider16, 16, 1);
+			// nanoKontrol2->connectControl(*Slider17, 17, 1);
+			// nanoKontrol2->connectControl(*Slider18, 18, 1);
+			// nanoKontrol2->connectControl(*Slider19, 19, 1);
+			// nanoKontrol2->connectControl(*Slider20, 20, 1);
+			// nanoKontrol2->connectControl(*Slider21, 21, 1);
+			// nanoKontrol2->connectControl(*Slider22, 22, 1);
+			// nanoKontrol2->connectControl(*recButton, 45, 1);
+			// nanoKontrol2->connectControl(*track_backward, 58, 1);
+			// nanoKontrol2->connectControl(*track_forward, 59, 1);
+			// nanoKontrol2->connectControl(*marker_backward, 61, 1);
+			// nanoKontrol2->connectControl(*marker_forward, 62, 1);
+
+			// GUI
+			// GLVBinding gui;
+			// glv::Slider slider;
+			// glv::Table layout;
+
+			// cout << drehbankKnob[1]->getName() << endl;
+			gui = new GLVBinding;
+			layout[0] = new glv::Table;
+			layout[1] = new glv::Table;
+
+			// Connect GUI to window
+			gui->bindTo(window());
+
+			// Configure GUI
+			// gui->stretch(1,100);
+			// gui->style().color.set(glv::Color(0.7), 0.5);
+			gui->style().color.set(glv::Color(0.75), 0.75);
+
+			layout[0]->arrangement(">p");
+			layout[1]->arrangement("d");
+
+			slider[19] = new glv::Slider;
+			slider[19]->interval(0, numSamplesInFile-1);
+			*layout[0] << *slider[19];
+			*layout[0] << new glv::Label("Pointer position");
+			// layout[0]->arrange();
+
+			for(int i = 0; i < 10; i++){
+				int index = i;
+				if(i == 3) continue;
+				else if(i > 6 && i < 9) index+=5;
+				else if(i == 9) index+= 6;
+				// cout << index << endl;
+
+				slider[index] = new glv::Slider;
+				slider[index]->interval(drehbankKnob[index]->min(), drehbankKnob[index]->max());
+				*layout[0] << *slider[index];
+				*layout[0] << new glv::Label(drehbankKnob[index]->getName());
+				// layout[0]->arrange();
+			}
+			// layout[0]->arrange();
+			// *gui << *layout[0];
+
+			// nd = new glv::NumberDialer;
+			// *layout[0] << *nd;
+
+			double plotWidth = 400;
+			// data.resize(glv::Data::DOUBLE, 4, AUDIO_BLOCK_SIZE);
+			data.resize(glv::Data::DOUBLE, 4, AUDIO_BLOCK_SIZE);
+			// for (int i = 0; i< AUDIO_BLOCK_SIZE; i++){
+			// 	// data.assign(1, 0, i, i+1);
+			// 	// data.assign(0, 1, i, i+1);
+			// 	data.assign(0.9, 0, i);
+			// 	data.assign(0.25, 1, i);
+			// 	data.assign(-0.25, 2, i);
+			// 	data.assign(-0.9, 3, i);
+			// }
+
+			plotFunction1D[0] = new glv::PlotFunction1D(glv::Color(0.75,0.75,0.75));
+			plotFunction1D[1] = new glv::PlotFunction1D(glv::Color(0.5,0,0));
+			plotFunction1D[2] = new glv::PlotFunction1D(glv::Color(0,0.5,0));
+			plotFunction1D[3] = new glv::PlotFunction1D(glv::Color(0,0,0.5));
+
+			plotTest[0] = new glv::Plot(glv::Rect(    0, 0* plotWidth/4, plotWidth,  plotWidth/4), *plotFunction1D[0]);
+			plotTest[1] = new glv::Plot(glv::Rect(    0, 0* plotWidth/4, plotWidth,  plotWidth/4), *plotFunction1D[1]);
+			plotTest[2] = new glv::Plot(glv::Rect(    0, 0* plotWidth/4, plotWidth,  plotWidth/4), *plotFunction1D[2]);
+			plotTest[3] = new glv::Plot(glv::Rect(    0, 0* plotWidth/4, plotWidth,  plotWidth/4), *plotFunction1D[3]);
+			// glv::Plot v1__(glv::Rect(    0,0*d/8, d,  d/8), *plotFunction1D[0]);
+			// glv::Plot v1__(glv::Rect(100,20), *new glv::PlotFunction1D(glv::Color(0.5,0,0)));
+			plotTest[0]->data() = data.slice(0).stride(data.size(0)).shape(1, data.size(1,2));
+			plotTest[1]->data() = data.slice(1).stride(data.size(0)).shape(1, data.size(1,2));
+			plotTest[2]->data() = data.slice(2).stride(data.size(0)).shape(1, data.size(1,2));
+			plotTest[3]->data() = data.slice(3).stride(data.size(0)).shape(1, data.size(1,2));
+
+			// plotTest[0]->major(data.size()/64);
+			// plotTest[1]->major(data.size()/64);
+			// plotTest[2]->major(data.size()/64);
+			// plotTest[3]->major(data.size()/64);
+			// cout << data.size() << endl;
+			plotTest[0]->minor(AUDIO_BLOCK_SIZE/ 4, 0);
+			plotTest[1]->minor(AUDIO_BLOCK_SIZE/ 4, 0);
+			plotTest[2]->minor(AUDIO_BLOCK_SIZE/ 4, 0);
+			plotTest[3]->minor(AUDIO_BLOCK_SIZE/ 4, 0);
+
+			plotTest[0]->major(AUDIO_BLOCK_SIZE, 0);
+			plotTest[1]->major(AUDIO_BLOCK_SIZE, 0);
+			plotTest[2]->major(AUDIO_BLOCK_SIZE, 0);
+			plotTest[3]->major(AUDIO_BLOCK_SIZE, 0);
+
+			// plotTest[0]->showGrid(false, 1);
+			// plotTest[1]->showGrid(false, 1);
+			// plotTest[2]->showGrid(false, 1);
+			// plotTest[3]->showGrid(false, 1);
+
+			plotTest[0]->showAxis(false, -1);
+			plotTest[1]->showAxis(false, -1);
+			plotTest[2]->showAxis(false, -1);
+			plotTest[3]->showAxis(false, -1);
+
+			plotTest[0]->range(0, data.size(1,2), 0).range(-1.2, 1.2, 1);
+			plotTest[1]->range(0, data.size(1,2), 0).range(-1.2, 1.2, 1);
+			plotTest[2]->range(0, data.size(1,2), 0).range(-1.2, 1.2, 1);
+			plotTest[3]->range(0, data.size(1,2), 0).range(-1.2, 1.2, 1);
+
+			plotTest[0]->lockScroll(true, -1).lockZoom(true, -1);
+			plotTest[1]->lockScroll(true, -1).lockZoom(true, -1);
+			plotTest[2]->lockScroll(true, -1).lockZoom(true, -1);
+			plotTest[3]->lockScroll(true, -1).lockZoom(true, -1);
+
+			// topTest = new glv::GLV;
+
+			// *layout[0] << *plotFunction1D[0];
+			// *layout[0] << *plotTest[0];
+			// *layout[0] << *plotTest[1];
+			// *layout[0] << *plotTest[2];
+			// *layout[0] << *plotTest[3];
+			// layout[1]->arrangement(">p");
+			*layout[1] << *plotTest[0] << *plotTest[1] << *plotTest[2] << *plotTest[3];
+
+			// button[0] = new glv::Button(glv::Rect(100));
+			button[0] = new glv::Button(glv::Rect(20, 20), false);
+			button[1] = new glv::Button(glv::Rect(20, 20), false);
+			*layout[1] << *button[0];
+			*layout[1] << *button[1];
+
+			layout[1]->pos(glv::Place::TR).anchor(0.72, 0);
+			layout[0]->arrange();
+			layout[1]->arrange();
+
+			*gui << *layout[0];
+			*gui << *layout[1];
+			// *gui << *button[0] << *button[1];
+			// button[0].pos();
+
 		}
 
 
@@ -278,57 +537,67 @@ public:
 			if(shaderManager.poll()){
 				loadShaders();
 			}
-			params.mRmsGain = Slider0.get();
-			params.mCrossFade = Slider2.get();
-			params.mMasterGain = Slider7.get();
 
-			if (track_backward.get() || track_forward.get()){
-				params.mCarrierFile-= track_backward.get();
-				params.mCarrierFile+= track_forward.get();
-				if (params.mCarrierFile > NUM_OF_FILES-1){
-					params.mCarrierFile = 0;
-				}else if (params.mCarrierFile < 0){
-					params.mCarrierFile = NUM_OF_FILES-1;
-				} cout << "Carrier: " << params.mCarrierFile << endl;
-			}
-
-			if (marker_backward.get() || marker_forward.get()){
-				params.mModulatorFile-= marker_backward.get();
-				params.mModulatorFile+= marker_forward.get();
-				if (params.mModulatorFile > NUM_OF_FILES-1){
-					params.mModulatorFile = 0;
-				}else if (params.mModulatorFile < 0){
-					params.mModulatorFile = NUM_OF_FILES-1;
-				} cout << "Modulator: " << params.mModulatorFile << endl;
-			}
+			// if (track_backward->get() || track_forward->get()){
+			// 	params.mCarrierFile-= track_backward->get();
+			// 	params.mCarrierFile+= track_forward->get();
+			// 	if (params.mCarrierFile > NUM_OF_FILES-1){
+			// 		params.mCarrierFile = 0;
+			// 	}else if (params.mCarrierFile < 0){
+			// 		params.mCarrierFile = NUM_OF_FILES-1;
+			// 	} cout << "Carrier: " << params.mCarrierFile << endl;
+			// }
+			//
+			// if (marker_backward->get() || marker_forward->get()){
+			// 	params.mModulatorFile-= marker_backward->get();
+			// 	params.mModulatorFile+= marker_forward->get();
+			// 	if (params.mModulatorFile > NUM_OF_FILES-1){
+			// 		params.mModulatorFile = 0;
+			// 	}else if (params.mModulatorFile < 0){
+			// 		params.mModulatorFile = NUM_OF_FILES-1;
+			// 	} cout << "Modulator: " << params.mModulatorFile << endl;
+			// }
 
 			// Master mix for playing different Ambi files
-			masterMix = params.mCrossFade;
-			if(masterMix < 0.5){
-				signal_mix[0] =  1 - (masterMix*2);
-				signal_mix[1] = masterMix*2;
-				signal_mix[2] = 0;
-			} else if(masterMix > 0.5){
-				signal_mix[0] = 0;
-				signal_mix[1] = (1- masterMix)*2;
-				signal_mix[2] = (masterMix*2) - 1;
-			}
+			// masterMix = params.mCrossFade;
+			// if(masterMix < 0.5){
+			// 	signal_mix[0] =  1 - (masterMix*2);
+			// 	signal_mix[1] = masterMix*2;
+			// 	signal_mix[2] = 0;
+			// } else if(masterMix > 0.5){
+			// 	signal_mix[0] = 0;
+			// 	signal_mix[1] = (1- masterMix)*2;
+			// 	signal_mix[2] = (masterMix*2) - 1;
+			// }
 
 			// std::cout << "RMS GAIN " << params.mRmsGain
-			// 					<< "RMS Threshold" << Slider1.get()
+			// 					<< "RMS Threshold" << params.mRmsThreshold
 			// 					<< std::endl;
 
 
-			std::cout << "Carrier: " << params.mCarrierFile
-								<< "| Modulator: " << params.mModulatorFile
-								<< "| Voices: " << g_N
-								<< "| Duration: " << g_duration
-								<< "| Ramp: " << g_ramp
-								<< "| Offset: " << g_offset
-								<< "| Delay: " << g_delay
-								<< "| Stretch: " << g_stretch
-								<< "| Random: " << g_random
-								<< std::endl;
+			// std::cout << "Car: " << params.mCarrierFile
+			// 					<< "| V: " << g_N
+			// 					<< "| Du: " << g_duration
+			// 					<< "| R_Du: " << g_randomDur
+			// 					<< "| R: " << g_ramp
+			// 					<< "| O: " << g_offset
+			// 					<< "| R_O: " << g_randomOffset
+			// 					<< "| De: " << g_delay
+			// 					<< "| R_De: " << g_randomDelay
+			// 					<< "| S: " << g_stretch
+			// 					<< "| R_P: " << g_randomPointer
+			// 					// << "| Random: " << g_random
+			// 					<< std::endl;
+
+			// std::cout << "Carrier: " << params.mCarrierFile
+			// 					<< "| Voices: " << g_N
+			// 					<< "| Duration: " << g_duration
+			// 					<< "| Ramp: " << g_ramp
+			// 					// << "| Offset: " << g_offset
+			// 					// << "| Delay: " << g_delay
+			// 					// << "| Stretch: " << g_stretch
+			// 					// << "| Random: " << g_random
+			// 					<< std::endl;
 		}
 
 		virtual void onDraw(Graphics &g) override {
@@ -366,32 +635,43 @@ public:
 			mTexture.quad(g, 1, 1, 3, 0);
 
 			// Draw waveform(s)
-			Mesh waveform0;
-			Mesh waveform1;
-			addWaveformDisplay(waveform0, originalWonly, 1, 0, 0);
-			addWaveformDisplay(waveform1, reconstructWonly, 0, 1, 0);
-			g.translate(1.0, -1.0, 0);
-			g.draw(waveform0);
-			g.draw(waveform1);
+			// Mesh waveform0;
+			// Mesh waveform1;
+			// addWaveformDisplay(waveform0, originalWonly, 1, 0, 0);
+			// addWaveformDisplay(waveform1, reconstructWonly, 0, 1, 0);
+			// g.translate(1.0, -1.0, 0);
+			// g.draw(waveform0);
+			// g.draw(waveform1);
+
+			// GUI
+			slider[0]->setValue(g_N);
+			slider[1]->setValue(g_duration);
+			slider[2]->setValue(g_ramp);
+			slider[4]->setValue(g_offset);
+			slider[5]->setValue(g_delay);
+			slider[6]->setValue(g_stretch);
+			slider[12]->setValue(params.mRmsGain);
+			slider[13]->setValue(params.mRmsThreshold);
+			slider[15]->setValue(params.mMasterGain);
+			slider[19]->setValue(grani[0].getGrainPointer());
+
+			button[0]->setValue(params.mOverwriteSample);
+			button[1]->setValue(params.mResetAll);
+
+			// for (int i = 0; i< AUDIO_BLOCK_SIZE; i++){
+			// 	// data.assign(1, 0, i, i+1);
+			// 	// data.assign(0, 1, i, i+1);
+			// 	data.assign(0.9, 0, i);
+			// 	data.assign(0.25, 1, i);
+			// 	data.assign(-0.25, 2, i);
+			// 	data.assign(-0.9, 3, i);
+			// }
+			// nd->setValue(params.mCarrierFile);
+			// cout << grani[0].getGrainPointer() << endl;
+
 		}
 
 		virtual void onSound(AudioIOData &io) override{
-
-			// Granulation parameters
-			g_N 				= Slider16.get();
-			g_duration 	= Slider17.get();
-			g_ramp 			= Slider18.get();
-			g_offset 		= Slider19.get();
-			g_delay 		= Slider20.get();
-			g_stretch 	= Slider21.get();
-			g_random 		= Slider22.get();
-			// std::cout << g_duration << std::endl;
-			for (int i = 0; i< TOTAL_SPATIAL_SAMPLING; i++){
-				grani[i].setVoices(g_N);
-				grani[i].setRandomFactor(g_random);
-				grani[i].setStretch(g_stretch);
-				grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
-			}
 
 			// Set up spatializer
 			spatializer->prepare();
@@ -409,6 +689,63 @@ public:
 				cout << "buffer overrun! framesRead[1]: " << framesRead[1] << " frames" << endl;
 			}
 
+			// params.mRmsGain = Slider0->get();
+			// params.mRmsThreshold = Slider1->get();
+			// params.mMasterGain = Slider7->get();
+			//
+
+			// // Granulation parameters
+			// g_N 				= Slider16->get();
+			// g_duration 	= Slider17->get();
+			// g_ramp 			= Slider18->get();
+			// g_offset 		= Slider19->get();
+			// g_delay 		= Slider20->get();
+			// g_stretch 	= Slider21->get();
+			// g_random 		= Slider22->get();
+
+			params.mRmsGain = drehbankKnob[12]->get();
+			params.mRmsThreshold = drehbankKnob[13]->get();
+			params.mMasterGain = drehbankKnob[15]->get();
+
+			// Granulation parameters
+			// g_N 				= Slider16->get();
+			g_N 				= drehbankKnob[0]->get();
+			g_duration 	= drehbankKnob[1]->get();
+			g_randomDur = drehbankKnob[17]->get();
+			g_ramp 			= drehbankKnob[2]->get();
+			// g_random 		= drehbankKnob[3]->get();
+			g_offset 		= drehbankKnob[4]->get();
+			g_randomOffset = drehbankKnob[20]->get();
+			g_delay 		= drehbankKnob[5]->get();
+			g_randomDelay = drehbankKnob[21]->get();
+			g_stretch 	= drehbankKnob[6]->get();
+			g_randomPointer = drehbankKnob[22]->get();
+
+			for (int i = 0; i< TOTAL_SPATIAL_SAMPLING; i++){
+				grani[i].setRandomFactor(g_randomDur, g_randomDelay, g_randomOffset, g_randomPointer);
+				grani[i].setStretch(g_stretch);
+				grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
+				grani[i].setVoices(g_N);
+			}
+
+
+			// for (int i = 0; i< TOTAL_SPATIAL_SAMPLING; i++){
+			// 	whichKnobSets = floor(((float)i)/knobsPerSTG);
+			// 	g_offset_knob = whichKnobSets + knobsOffset;
+			// 	g_delay_knob = whichKnobSets + (knobsOffset * 2);
+			// 	g_stretch_knob = whichKnobSets + (knobsOffset * 3);
+			//
+			// 	g_offset = drehbankKnob[g_offset_knob]->get();
+			// 	g_delay = drehbankKnob[g_delay_knob]->get();
+			// 	g_stretch = drehbankKnob[g_stretch_knob]->get();
+			// 	// cout << g_stretch_knob << endl;
+			// 	grani[i].setVoices(g_N);
+			// 	grani[i].setRandomFactor(g_random);
+			// 	grani[i].setStretch(g_stretch);
+			// 	grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
+			// }
+
+
 			// Pointer for output RMS, NxN
 			float *rmsBuffer = (float *) mNewRmsMeterValues.data.ptr;
 
@@ -423,7 +760,7 @@ public:
 					float cosAzi = COS(azimuth);
 
 					int STgrain_index = azimuthIndex * SPATIAL_SAMPLING + elevIndex;
-					numSamplesReadFromFile[STgrain_index] = 0;
+					// numSamplesReadFromFile[STgrain_index] = 0;
 					// Pointer for buffer 0
 					float *w_0 = readBuffer[0];
 					float *x_0 = readBuffer[0] + 1;
@@ -442,37 +779,33 @@ public:
 					float *y_r = reconstructAmbiBuffer + 2;
 					float *z_r = reconstructAmbiBuffer + 3;
 
-					grani[STgrain_index].setThreshold(params.mRmsGain, Slider1.get());
+					grani[STgrain_index].setThreshold(params.mRmsGain, params.mRmsThreshold);
 
 					for (int frame = 0; frame < AUDIO_BLOCK_SIZE; frame++) {
+						if (params.mOverwriteSample == true){
+							float STgrain_mix = (*w_0 * sqrt2)
+																+ (*x_0 * cosAzi * cosElev)
+																+ (*y_0 * sinAzi * cosElev)
+																+ (*z_0 * sinElev);
 
-						if (params.mCarrierFile != currentFile){
-							changeSample = true;
-						}
-						if(changeSample == true){
-							if (numSamplesReadFromFile[STgrain_index] < numSamplesInFile){
-								// cout << "changesample!" << endl;
-								float STgrain_mix = (*w_0 * sqrt2)
-															  	+ (*x_0 * COS(azimuth) * cosElev)
-																  + (*y_0 * SIN(azimuth) * cosElev)
-															  	+ (*z_0 * SIN(elev));
+							grani[STgrain_index].writeData(STgrain_mix);
+							numSamplesReadFromFile[STgrain_index]++;
 
-								grani[STgrain_index].writeData(STgrain_mix);
-								numSamplesReadFromFile[STgrain_index]++;
-							}
-							else if (numSamplesReadFromFile[STgrain_index] >= numSamplesInFile){
-								numSamplesReadFromFile[STgrain_index] = 0;
-								changeSample = false;
-								break;
-								cout << "reset!" << endl;
+							if (numSamplesReadFromFile[STgrain_index] >= numSamplesInFile){
+									numSamplesReadFromFile[STgrain_index] = 0;
 							}
 						}
 
+						if (params.mResetAll == true){
+							grani[STgrain_index].resetGlobalPointer();
+							// grani[STgrain_index].reset();
+							// cout << "RESET!" << endl;
+						}
 
 						// Tick granulation engine
 						STslice[STgrain_index] = grani[STgrain_index].tick();
 
-						// Calculate number of grains that is above RMS threshold
+						// Calculate number of grains that is above RMS threshold for normalization
 						numOfGatedGrains[frame] += grani[STgrain_index].getNumOfGatedGrains();
 
 						// Accumulate granulated output
@@ -493,7 +826,7 @@ public:
 						// Increment pointer by 4 (4 channel interleave Ambi files)
 						w_0+=4; x_0+=4; y_0+=4; z_0+=4;
 						w_r+=4; x_r+=4; y_r+=4; z_r+=4;
-						currentFile = params.mCarrierFile;
+						// currentFile = params.mCarrierFile;
 					} // End of audio frames
 
 					mRms[STgrain_index] = sqrt(mRmsAccum[STgrain_index] / (float) AUDIO_BLOCK_SIZE);
@@ -504,10 +837,16 @@ public:
 					*rmsBuffer++ = mRms[STgrain_index];
 				} // End of Azi
 			} // End of Elev
+			params.mResetAll = false;
 
 			// OUTPUT
-			float * w_0 = readBuffer[0];
-			float * w_r = reconstructAmbiBuffer;
+			// float * w_0 = readBuffer[0];
+			// float * w_r = reconstructAmbiBuffer;
+			// Pointer for reconstructed buffer
+			float *gui_w_r = reconstructAmbiBuffer;
+			float *gui_x_r = reconstructAmbiBuffer + 1;
+			float *gui_y_r = reconstructAmbiBuffer + 2;
+			float *gui_z_r = reconstructAmbiBuffer + 3;
 			for (int frame = 0; frame < AUDIO_BLOCK_SIZE; frame++){
 				// cout << "frame "<< frame << " has a total grain of " << numOfGatedGrains[frame] << endl;
 				// AUDIO OUTPUT
@@ -532,18 +871,40 @@ public:
 						// cout << "Texture Buffer overrun!" << endl;
 					}
 				}
+				// cout << frame << endl;
+				// for (int i = 0; i< AUDIO_BLOCK_SIZE; i++){
+				// 	// data.assign(1, 0, i, i+1);
+				// 	// data.assign(0, 1, i, i+1);
+				// glv::Data& d = data;
+				// d.assign(*gui_w_r, 0, frame);
+				// d.assign(*gui_x_r, 1, frame);
+				// d.assign(*gui_y_r, 2, frame);
+				// d.assign(*gui_z_r, 3, frame);
+				// }
 
 				// TEMP: Draw the waveforms
-				originalWonly[frame] = *w_0;
-				w_0 += 4;
-			 	reconstructWonly[frame] = *w_r;
-				w_r += 4;
+				// originalWonly[frame] = *w_0;
+				// w_0 += 4;
+				// 	reconstructWonly[frame] = *w_r;
+				gui_w_r += 4; gui_x_r +=4; gui_y_r += 4; gui_z_r +=4;
 			}
-
+			// data.assign(*reconstructAmbiBuffer, 0, 0, AUDIO_BLOCK_SIZE);
+			// data.assign(*reconstructAmbiBuffer + 1, 1, 0, AUDIO_BLOCK_SIZE);
+			// data.assign(*reconstructAmbiBuffer + 2, 2, 0, AUDIO_BLOCK_SIZE);
+			// data.assign(*reconstructAmbiBuffer + 3, 3, 0, AUDIO_BLOCK_SIZE);
 			spatializer->finalize(io);
 		} // End of onSound
 
 		virtual void onKeyDown(const Keyboard& k) override {
+			// k.print();
+			if (k.key() == 8) {
+				params.mOverwriteSample = !params.mOverwriteSample;
+			} else if (k.key() == 92){
+				params.mResetAll = true;
+				// params.mResetAll = !params.mResetAll;
+				// params.mResetAll = false;
+			}
+
 			if (k.key() == '1') {
 				params.mCarrierFile = 0;
 			} else if (k.key() == '2'){
@@ -593,6 +954,7 @@ public:
 		ShaderManager shaderManager;
 		MeterParams params;
 
+		// bool mOverwriteSample;
 		int mRmsCounter;
 		int mRmsSamples;
 		vector<float> mRmsAccum;
@@ -615,9 +977,10 @@ public:
 		float masterMix;
 		float signal_mix[3];
 		float rmsThreshold;
-		bool changeSample;
-		int currentFile;
+		// bool changeSample;
 		int numSamplesInFile;
+		int currentFile;
+		int prevFile[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
 		int numSamplesReadFromFile[SPATIAL_SAMPLING*SPATIAL_SAMPLING];
 
 		Granulate grani[TOTAL_SPATIAL_SAMPLING];
@@ -627,10 +990,54 @@ public:
 		int g_offset;
 		int g_delay;
 		int g_stretch;
-		float g_random;
+		// float g_random;
+		float g_randomDur;
+		float g_randomDelay;
+		float g_randomOffset;
+		float g_randomPointer;
 
 		State mState;
 		cuttlebone::Maker<State> mStateMaker;
+
+		// MIDI controller (Doepfer Drehbank)
+		int knobsPerSTG;
+		int knobsOffset;
+		int whichKnobSets;
+		int g_offset_knob;
+		int g_delay_knob;
+		int g_stretch_knob;
+
+		ParameterMIDI *drehbank;
+		Parameter *drehbankKnob[NUM_DREHBANK_KNOBS];
+
+		// // MIDI controller (nanoKontrol2)
+		// ParameterMIDI *nanoKontrol2; // KORG nanoKONTROL2
+		// Parameter *Slider0;
+		// Parameter *Slider1;
+		// Parameter *Slider2;
+		// Parameter *Slider7;
+		// Parameter *Slider16;
+		// Parameter *Slider17;
+		// Parameter *Slider18;
+		// Parameter *Slider19;
+		// Parameter *Slider20;
+		// Parameter *Slider21;
+		// Parameter *Slider22;
+		// Parameter *recButton;
+		// Parameter *track_backward;
+		// Parameter *track_forward;
+		// Parameter *marker_backward;
+		// Parameter *marker_forward;
+
+		// GUI
+		GLVBinding *gui;
+		glv::Slider *slider[20];
+		glv::Button *button[2];
+		glv::NumberDialer *nd;
+		glv::Table *layout[2];
+		glv::PlotFunction1D *plotFunction1D[4];
+		glv::Plot *plotTest[4];
+		glv::Data data;
 	};
 
 
@@ -638,31 +1045,6 @@ public:
 	{
 
 		Angkasa app;
-
-		int midiDevice = 0;
-		if(app.sim()) midiDevice = 3;
-		parameterMIDI.init(midiDevice, false);
-		parameterMIDI.connectControl(Slider0, 0, 1);
-		parameterMIDI.connectControl(Slider1, 1, 1);
-		parameterMIDI.connectControl(Slider2, 2, 1);
-
-		// parameterMIDI.connectControl(Slider6, 6, 1);
-		parameterMIDI.connectControl(Slider7, 7, 1);
-
-		parameterMIDI.connectControl(recButton, 45, 1);
-		parameterMIDI.connectControl(track_backward, 58, 1);
-		parameterMIDI.connectControl(track_forward, 59, 1);
-		parameterMIDI.connectControl(marker_backward, 61, 1);
-		parameterMIDI.connectControl(marker_forward, 62, 1);
-
-		parameterMIDI.connectControl(reset_grains, 46, 1);
-		parameterMIDI.connectControl(Slider16, 16, 1);
-		parameterMIDI.connectControl(Slider17, 17, 1);
-		parameterMIDI.connectControl(Slider18, 18, 1);
-		parameterMIDI.connectControl(Slider19, 19, 1);
-		parameterMIDI.connectControl(Slider20, 20, 1);
-		parameterMIDI.connectControl(Slider21, 21, 1);
-		parameterMIDI.connectControl(Slider22, 22, 1);
 
 		app.start();
 	}

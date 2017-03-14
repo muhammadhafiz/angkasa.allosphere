@@ -34,7 +34,7 @@ class Granulate
   int getNumOfGatedGrains();
 
   //! Set the treshold for triggering grains
-  void setThreshold (float rmsGain, float rmsThreshold);
+  void setThreshold (double rmsGain, double rmsThreshold);
 
   //! Load a monophonic soundfile to be "granulated".
   /*!
@@ -46,8 +46,14 @@ class Granulate
   // Setup for granulation
   // void setup( int projectedBufferSize );
 
+  //! Get grain pointer position
+  int getGrainPointer( );
+
   //! Project Signal for each granular stream
   void getProjectedSignal( Array<double> projectedSignal );
+
+  //! Reset all STG's global pointers to 0
+  void resetGlobalPointer( void );
 
   //! Reset the file pointer and all existing grains to the file start.
   /*!
@@ -101,7 +107,8 @@ class Granulate
     millisecond length will be augmented by an extra length of up to
     +30 or -30 milliseconds).
    */
-  void setRandomFactor( double randomness = 0.1 );
+  // void setRandomFactor( double randomness = 0.1 );
+  void setRandomFactor( double randomness_dur = 0.1, double randomness_delay = 0.1, double randomness_offset = 0.1, double randomness_pointer = 0.1);
 
   //! Return the specified channel value of the last computed frame.
   /*!
@@ -184,7 +191,11 @@ class Granulate
   float gRmsThreshold_;
   float gRmsGain_;
   int gOffset_;
-  double gRandomFactor_;
+  // double gRandomFactor_;
+  double gRandomFactor_dur_;
+  double gRandomFactor_delay_;
+  double gRandomFactor_offset_;
+  double gRandomFactor_pointer_;
   double gain_;
 
   float sampleRate_;

@@ -209,7 +209,6 @@ void Granulate :: calculateGrain( Granulate::Grain& grain )
   // std::cout << "ATTACK!!!" << std::endl;
   size_t grainSize = (  gDuration_ * 0.001 * sampleRate_  );
   grain.rms = 0;
-  grain.rmsAccum = 0;
   for (int k = 0; k< grainSize; k++){
     // grain.rmsAccum += data_->operator[]( grain.startPointer + k ) *
     //                   data_->operator[]( grain.startPointer + k ) ;
@@ -219,7 +218,8 @@ void Granulate :: calculateGrain( Granulate::Grain& grain )
   }
   // grain.rms = sqrt(grain.rmsAccum / (float) gDuration_) * gRmsGain_;
   // grain.rms = sqrt(grain.rmsAccum / (float) grainSize) * gRmsGain_;
-  grain.rms = sqrt(grain.rmsAccum / (double) grainSize) * gRmsGain_;
+  grain.rms = (sqrt(grain.rmsAccum / (double) grainSize)) * gRmsGain_;
+  grain.rmsAccum = 0;
   // std::cout << " rms: "<< grain.rms << std::endl;
   // std::cout << " value: "<< ring_[ grain.startPointer] << std::endl;
 

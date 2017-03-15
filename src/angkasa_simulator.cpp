@@ -43,6 +43,7 @@ public:
 	mMasterGain(0),
 	mRmsGain(1.0),
 	mRmsThreshold(0.0),
+	mRmsScaler(1.0),
 	mCrossFade(0.0),
 	mCarrierFile(0),
 	mModulatorFile(1)
@@ -52,6 +53,7 @@ public:
 		float mMasterGain;
 		float mRmsGain;
 		float mRmsThreshold;
+		float mRmsScaler;
 		float mCrossFade;
 		int mCarrierFile;
 		int mModulatorFile;
@@ -88,7 +90,7 @@ public:
 			filename[1] = "norm_insects_1min.wav";
 			// filename[1] = "norm_insects_long.wav";
 			// filename[1] = "norm_insects.wav";
-			filename[2] = "norm_gamelan_bapangSelisir.wav";
+			filename[2] = "norm_gamelan_bapangSelisir_long.wav";
 			// filename[4] = "norm_gulls.wav";
 			// filename[5] = "norm_steamtrain.wav";
 			// filename[6] = "norm_440_45-45.wav";
@@ -250,6 +252,7 @@ public:
 			drehbankKnob[6] = new Parameter("Grain Stretch", "", 1, "", 1, 10);
 			drehbankKnob[12] = new Parameter("RMS Gain", "", 1.0, "", 0.0, 1.0);
 			drehbankKnob[13] = new Parameter("RMS Threshold", "", 0.0, "", 0.0, 0.3);
+			drehbankKnob[29] = new Parameter("RMS Scaler", "", 1.0, "", 0.0, 1.0);
 			drehbankKnob[15] = new Parameter("Master Gain", "", 0.5, "", 0.0, 1.0);
 			drehbankKnob[17] = new Parameter("Grain Randomness_dur", "", 0., "", 0., 1.0);
 			drehbankKnob[20] = new Parameter("Grain Randomness_offset", "", 0., "", 0., 1.0);
@@ -269,6 +272,7 @@ public:
 			drehbank->connectControl(*drehbankKnob[6], 6, 1);
 			drehbank->connectControl(*drehbankKnob[12], 12, 1);
 			drehbank->connectControl(*drehbankKnob[13], 13, 1);
+			drehbank->connectControl(*drehbankKnob[29], 29, 1);
 			drehbank->connectControl(*drehbankKnob[15], 15, 1);
 			drehbank->connectControl(*drehbankKnob[17], 17, 1);
 			drehbank->connectControl(*drehbankKnob[20], 20, 1);
@@ -370,11 +374,11 @@ public:
 			*layout[0] << new glv::Label("Pointer Position");
 			// layout[0]->arrange();
 
-			for(int i = 0; i < 10; i++){
+			for(int i = 0; i < 9; i++){
 				int index = i;
 				if(i == 3) continue;
 				else if(i > 6 && i < 9) index+=5;
-				else if(i == 9) index+= 6;
+				// else if(i == 9) index+= 6;
 				// cout << index << endl;
 
 				slider[index] = new glv::Slider;
@@ -383,6 +387,16 @@ public:
 				*layout[0] << new glv::Label(drehbankKnob[index]->getName());
 				// layout[0]->arrange();
 			}
+			slider[29]= new glv::Slider;
+			slider[29]->interval(drehbankKnob[29]->min(), drehbankKnob[29]->max());
+			*layout[0] << *slider[29];
+			*layout[0] << new glv::Label("RMS Scaler");
+
+			slider[15]= new glv::Slider;
+			slider[15]->interval(drehbankKnob[15]->min(), drehbankKnob[15]->max());
+			*layout[0] << *slider[15];
+			*layout[0] << new glv::Label(drehbankKnob[15]->getName());
+
 			slider[60] = new glv::Slider;
 			slider[61] = new glv::Slider;
 			slider[62] = new glv::Slider;
@@ -671,6 +685,7 @@ public:
 			slider[6]->setValue(g_stretch);
 			slider[12]->setValue(params.mRmsGain);
 			slider[13]->setValue(params.mRmsThreshold);
+			slider[29]->setValue(params.mRmsScaler);
 			slider[15]->setValue(params.mMasterGain);
 			slider[19]->setValue(grani[0].getGrainPointer());
 			slider[60]->setValue(signal_mix[0]);
@@ -700,6 +715,7 @@ public:
 			int numOfGatedGrains[AUDIO_BLOCK_SIZE];
 			memset(numOfGatedGrains, 0, sizeof(float) * AUDIO_BLOCK_SIZE);
 
+			memset(subChan, 0, sizeof(float) * AUDIO_BLOCK_SIZE);
 			// Read into buffer per CB
 			// framesRead[0] = mSoundFile[params.mCarrierFile]->read(readBuffer[0], AUDIO_BLOCK_SIZE);
 			// framesRead[1] = mSoundFile[params.mModulatorFile]->read(readBuffer[1], AUDIO_BLOCK_SIZE);
@@ -732,6 +748,7 @@ public:
 
 			params.mRmsGain = drehbankKnob[12]->get();
 			params.mRmsThreshold = drehbankKnob[13]->get();
+			params.mRmsScaler = drehbankKnob[29]->get();
 			params.mMasterGain = drehbankKnob[15]->get();
 
 			// Granulation parameters
@@ -814,7 +831,7 @@ public:
 					float *y_r = reconstructAmbiBuffer + 2;
 					float *z_r = reconstructAmbiBuffer + 3;
 
-					grani[STgrain_index].setThreshold(params.mRmsGain, params.mRmsThreshold);
+					grani[STgrain_index].setThreshold(params.mRmsGain, params.mRmsThreshold * params.mRmsScaler);
 
 					for (int frame = 0; frame < AUDIO_BLOCK_SIZE; frame++) {
 						if (params.mOverwriteSample == true){
@@ -889,7 +906,14 @@ public:
 						// reconstructAmbiBuffer[frame*4 + chan] /= (float)(TOTAL_SPATIAL_SAMPLING) / channelWeights[chan];
 						reconstructAmbiBuffer[frame*4 + chan] /= (float)(numOfGatedGrains[frame]+1) / channelWeights[chan];
 						ambiChans[frame+ chan*AUDIO_BLOCK_SIZE] = reconstructAmbiBuffer[frame*4 + chan]* params.mMasterGain;
+						subChan[frame] += ambiChans[frame+ chan*AUDIO_BLOCK_SIZE];
 					}
+
+				if(sim()){
+					subChan[frame] /= 4;
+					io.out(48) = subChan[frame] * 0.5;
+					// subChan[frame] = 0;
+				}
 
 				// VISUAL OUTPUT
 				mRmsCounter++;
@@ -1009,6 +1033,7 @@ public:
 		float readBuffer[3][AUDIO_BLOCK_SIZE * 4];
 		float reconstructAmbiBuffer[AUDIO_BLOCK_SIZE * 4];
 		float gui_reconstruct[AUDIO_BLOCK_SIZE * 4];
+		float subChan[AUDIO_BLOCK_SIZE];
 		// float reconstructWonly[AUDIO_BLOCK_SIZE];
 		// float originalWonly[AUDIO_BLOCK_SIZE];
 

@@ -217,7 +217,7 @@ public:
 			// MIDI controller (Doepfer Drehbank)
 			drehbank = new ParameterMIDI;
 			int drehbank_midiPort = 0;
-			if(sim()) drehbank_midiPort = 4;
+			if(sim()) drehbank_midiPort = 3;
 			drehbank->init(drehbank_midiPort, false);
 
 			// g_stretch = 17 -> 32 (16 knobs, 9 STG each)
@@ -261,6 +261,7 @@ public:
 			drehbankKnob[60] = new Parameter("Signal Mix 0", "", 0., "", 0., 1.0);
 			drehbankKnob[61] = new Parameter("Signal Mix 1", "", 0., "", 0., 1.0);
 			drehbankKnob[62] = new Parameter("Signal Mix 2", "", 0., "", 0., 1.0);
+			drehbankKnob[63] = new Parameter("Subwoofer Mix", "", 0.5, "", 0., 1.0);
 
 
 			drehbank->connectControl(*drehbankKnob[0], 0, 1);
@@ -281,6 +282,7 @@ public:
 			drehbank->connectControl(*drehbankKnob[60], 60, 1);
 			drehbank->connectControl(*drehbankKnob[61], 61, 1);
 			drehbank->connectControl(*drehbankKnob[62], 62, 1);
+			drehbank->connectControl(*drehbankKnob[63], 63, 1);
 
 
 			// string pName_offset = "STG_offset";
@@ -400,15 +402,19 @@ public:
 			slider[60] = new glv::Slider;
 			slider[61] = new glv::Slider;
 			slider[62] = new glv::Slider;
+			slider[63] = new glv::Slider;
 			slider[60]->interval(drehbankKnob[60]->min(), drehbankKnob[60]->max());
 			slider[61]->interval(drehbankKnob[61]->min(), drehbankKnob[61]->max());
 			slider[62]->interval(drehbankKnob[62]->min(), drehbankKnob[62]->max());
+			slider[63]->interval(drehbankKnob[63]->min(), drehbankKnob[63]->max());
 			*layout[0] << *slider[60];
 			*layout[0] << new glv::Label("Signal 0");
 			*layout[0] << *slider[61];
 			*layout[0] << new glv::Label("Signal 1");
 			*layout[0] << *slider[62];
 			*layout[0] << new glv::Label("Signal 2");
+			*layout[0] << *slider[63];
+			*layout[0] << new glv::Label("Subwoofer");
 			// layout[0]->arrange();
 			// *gui << *layout[0];
 
@@ -691,6 +697,7 @@ public:
 			slider[60]->setValue(signal_mix[0]);
 			slider[61]->setValue(signal_mix[1]);
 			slider[62]->setValue(signal_mix[2]);
+			slider[63]->setValue(sub_mix);
 
 			button[0]->setValue(params.mOverwriteSample);
 			button[1]->setValue(params.mResetAll);
@@ -737,6 +744,7 @@ public:
 			signal_mix[0] = drehbankKnob[60]->get();
 			signal_mix[1] = drehbankKnob[61]->get();
 			signal_mix[2] = drehbankKnob[62]->get();
+			sub_mix = drehbankKnob[63]->get();
 			// // Granulation parameters
 			// g_N 				= Slider16->get();
 			// g_duration 	= Slider17->get();
@@ -910,8 +918,9 @@ public:
 					}
 
 				if(sim()){
-					subChan[frame] /= 4;
-					io.out(48) = subChan[frame] * 0.5;
+					// subChan[frame] /= 4;
+					float subValue = subChan[frame] * sub_mix;
+					io.out(47, frame) = subValue;
 					// subChan[frame] = 0;
 				}
 
@@ -1038,6 +1047,7 @@ public:
 		// float originalWonly[AUDIO_BLOCK_SIZE];
 
 		float masterMix;
+		float sub_mix;
 		float signal_mix[3];
 		float rmsThreshold;
 		// bool changeSample;

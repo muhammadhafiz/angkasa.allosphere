@@ -86,11 +86,12 @@ public:
 			// 0 = carrier, i.e. source, 1 = modulator
 			// Problem when source and modulator is the same file. Try to avoid!
 			// filename[0] = "norm_organ_fade.wav";
-			filename[0] = "norm_organ.wav";
-			filename[1] = "norm_insects_1min.wav";
+			filename[2] = "norm_organ.wav";
+			filename[0] = "norm_insects_1min.wav";
 			// filename[1] = "norm_insects_long.wav";
 			// filename[1] = "norm_insects.wav";
-			filename[2] = "norm_gamelan_bapangSelisir_long.wav";
+			filename[1] = "norm_gamelan_bapangSelisir_long.wav";
+			// filename[0] = "gambangan_30b.wav";
 			// filename[4] = "norm_gulls.wav";
 			// filename[5] = "norm_steamtrain.wav";
 			// filename[6] = "norm_440_45-45.wav";
@@ -184,6 +185,8 @@ public:
 				grani[i].setStretch(g_stretch);
 				grani[i].setGrainParameters(g_duration, g_ramp, g_offset, g_delay);
 				grani[i].openFile( preProjectedFile->frames() );
+				// cout << preProjectedFile->frames() << endl;
+				grani[i].openFile( preProjectedFile->frameRate()*3 );
 				grani[i].setVoices(g_N);
 			}
 
@@ -217,7 +220,7 @@ public:
 			// MIDI controller (Doepfer Drehbank)
 			drehbank = new ParameterMIDI;
 			int drehbank_midiPort = 0;
-			if(sim()) drehbank_midiPort = 3;
+			if(sim()) drehbank_midiPort = 4;
 			drehbank->init(drehbank_midiPort, false);
 
 			// g_stretch = 17 -> 32 (16 knobs, 9 STG each)
@@ -250,18 +253,22 @@ public:
 			drehbankKnob[4] = new Parameter("Grain Offset", "", 0, "", -149, 150);
 			drehbankKnob[5] = new Parameter("Grain Delay", "", 0, "", 0, 300);
 			drehbankKnob[6] = new Parameter("Grain Stretch", "", 1, "", 1, 10);
-			drehbankKnob[12] = new Parameter("RMS Gain", "", 1.0, "", 0.0, 1.0);
-			drehbankKnob[13] = new Parameter("RMS Threshold", "", 0.0, "", 0.0, 0.3);
-			drehbankKnob[29] = new Parameter("RMS Scaler", "", 1.0, "", 0.0, 1.0);
-			drehbankKnob[15] = new Parameter("Master Gain", "", 0.5, "", 0.0, 1.0);
+			drehbankKnob[8] = new Parameter("RMS Gain", "", 1.0, "", 0.0, 1.0);
+			drehbankKnob[9] = new Parameter("RMS Threshold", "", 0.0, "", 0.0, 0.3);
+			drehbankKnob[25] = new Parameter("RMS Scaler", "", 1.0, "", 0.0, 1.0);
+			drehbankKnob[14] = new Parameter("Subwoofer Mix", "", 0.5, "", 0., 1.0);
+			drehbankKnob[15] = new Parameter("Master Gain", "", 0.0, "", 0.0, 1.0);
 			drehbankKnob[17] = new Parameter("Grain Randomness_dur", "", 0., "", 0., 1.0);
 			drehbankKnob[20] = new Parameter("Grain Randomness_offset", "", 0., "", 0., 1.0);
 			drehbankKnob[21] = new Parameter("Grain Randomness_delay", "", 0., "", 0., 1.0);
 			drehbankKnob[22] = new Parameter("Grain Randomness_pointer", "", 0., "", 0., 1.0);
+
+			drehbankKnob[46] = new Parameter("Overwrite Sample", "", 0., "", 0., 1.0); // If not 0.0
+			drehbankKnob[47] = new Parameter("RESET POINTER", "", 0., "", 0., 1.0); // If not 0.0
+
 			drehbankKnob[60] = new Parameter("Signal Mix 0", "", 0., "", 0., 1.0);
 			drehbankKnob[61] = new Parameter("Signal Mix 1", "", 0., "", 0., 1.0);
-			drehbankKnob[62] = new Parameter("Signal Mix 2", "", 0., "", 0., 1.0);
-			drehbankKnob[63] = new Parameter("Subwoofer Mix", "", 0.5, "", 0., 1.0);
+			// drehbankKnob[62] = new Parameter("Signal Mix 2", "", 0., "", 0., 1.0);
 
 
 			drehbank->connectControl(*drehbankKnob[0], 0, 1);
@@ -271,18 +278,21 @@ public:
 			drehbank->connectControl(*drehbankKnob[4], 4, 1);
 			drehbank->connectControl(*drehbankKnob[5], 5, 1);
 			drehbank->connectControl(*drehbankKnob[6], 6, 1);
-			drehbank->connectControl(*drehbankKnob[12], 12, 1);
-			drehbank->connectControl(*drehbankKnob[13], 13, 1);
-			drehbank->connectControl(*drehbankKnob[29], 29, 1);
+			drehbank->connectControl(*drehbankKnob[8], 8, 1);
+			drehbank->connectControl(*drehbankKnob[9], 9, 1);
+			drehbank->connectControl(*drehbankKnob[25], 25, 1);
+			drehbank->connectControl(*drehbankKnob[14], 14, 1);
 			drehbank->connectControl(*drehbankKnob[15], 15, 1);
 			drehbank->connectControl(*drehbankKnob[17], 17, 1);
 			drehbank->connectControl(*drehbankKnob[20], 20, 1);
 			drehbank->connectControl(*drehbankKnob[21], 21, 1);
 			drehbank->connectControl(*drehbankKnob[22], 22, 1);
+			drehbank->connectControl(*drehbankKnob[46], 46, 1);
+			drehbank->connectControl(*drehbankKnob[47], 47, 1);
 			drehbank->connectControl(*drehbankKnob[60], 60, 1);
 			drehbank->connectControl(*drehbankKnob[61], 61, 1);
-			drehbank->connectControl(*drehbankKnob[62], 62, 1);
-			drehbank->connectControl(*drehbankKnob[63], 63, 1);
+			// drehbank->connectControl(*drehbankKnob[62], 62, 1);
+			// drehbank->connectControl(*drehbankKnob[63], 63, 1);
 
 
 			// string pName_offset = "STG_offset";
@@ -370,51 +380,142 @@ public:
 			layout[0]->arrangement(">p");
 			layout[1]->arrangement("d");
 
-			slider[19] = new glv::Slider;
-			slider[19]->interval(0, numSamplesInFile-1);
-			*layout[0] << *slider[19];
-			*layout[0] << new glv::Label("Pointer Position");
 			// layout[0]->arrange();
 
-			for(int i = 0; i < 9; i++){
-				int index = i;
-				if(i == 3) continue;
-				else if(i > 6 && i < 9) index+=5;
-				// else if(i == 9) index+= 6;
-				// cout << index << endl;
+			// for(int i = 0; i < 9; i++){
+			// 	int index = i;
+			// 	if(i == 3) continue;
+			// 	else if(i > 6 && i < 9) index+=5;
+			// 	// else if(i == 9) index+= 6;
+			// 	// cout << index << endl;
+			//
+			// 	slider[index] = new glv::Slider;
+			// 	slider[index]->interval(drehbankKnob[index]->min(), drehbankKnob[index]->max());
+			// 	*layout[0] << *slider[index];
+			// 	*layout[0] << new glv::Label(drehbankKnob[index]->getName());
+			// 	// layout[0]->arrange();
+			// }
 
-				slider[index] = new glv::Slider;
-				slider[index]->interval(drehbankKnob[index]->min(), drehbankKnob[index]->max());
-				*layout[0] << *slider[index];
-				*layout[0] << new glv::Label(drehbankKnob[index]->getName());
-				// layout[0]->arrange();
-			}
-			slider[29]= new glv::Slider;
-			slider[29]->interval(drehbankKnob[29]->min(), drehbankKnob[29]->max());
-			*layout[0] << *slider[29];
+
+			slider[19] = new glv::Slider;
+			// slider[19]->interval(0, numSamplesInFile-1);
+			slider[19]->interval(0, ( preProjectedFile->frameRate()*3 )-1);
+			*layout[0] << *slider[19];
+			*layout[0] << new glv::Label("Pointer Position");
+
+			slider[0]= new glv::Slider;
+			slider[0]->interval(drehbankKnob[0]->min(), drehbankKnob[0]->max());
+			*layout[0] << *slider[0];
+			*layout[0] << new glv::Label("Grain Voices");
+
+			slider[1]= new glv::Slider;
+			slider[1]->interval(drehbankKnob[1]->min(), drehbankKnob[1]->max());
+			*layout[0] << *slider[1];
+			*layout[0] << new glv::Label("Grain Duration");
+
+			slider[2]= new glv::Slider;
+			slider[2]->interval(drehbankKnob[2]->min(), drehbankKnob[2]->max());
+			*layout[0] << *slider[2];
+			*layout[0] << new glv::Label("Grain Ramp");
+
+			slider[4]= new glv::Slider;
+			slider[4]->interval(drehbankKnob[4]->min(), drehbankKnob[4]->max());
+			*layout[0] << *slider[4];
+			*layout[0] << new glv::Label("Grain Offset");
+
+			slider[5]= new glv::Slider;
+			slider[5]->interval(drehbankKnob[5]->min(), drehbankKnob[5]->max());
+			*layout[0] << *slider[5];
+			*layout[0] << new glv::Label("Grain Delay");
+
+			slider[6]= new glv::Slider;
+			slider[6]->interval(drehbankKnob[6]->min(), drehbankKnob[6]->max());
+			*layout[0] << *slider[6];
+			*layout[0] << new glv::Label("Grain Stretch");
+
+			slider[17]= new glv::Slider;
+			slider[17]->interval(drehbankKnob[17]->min(), drehbankKnob[17]->max());
+			*layout[0] << *slider[17];
+			*layout[0] << new glv::Label("Randomize Grain Dur");
+
+			slider[20]= new glv::Slider;
+			slider[20]->interval(drehbankKnob[20]->min(), drehbankKnob[20]->max());
+			*layout[0] << *slider[20];
+			*layout[0] << new glv::Label("Randomize Grain Offset");
+
+			slider[21]= new glv::Slider;
+			slider[21]->interval(drehbankKnob[21]->min(), drehbankKnob[21]->max());
+			*layout[0] << *slider[21];
+			*layout[0] << new glv::Label("Randomize Grain Delay");
+
+			slider[22]= new glv::Slider;
+			slider[22]->interval(drehbankKnob[22]->min(), drehbankKnob[22]->max());
+			*layout[0] << *slider[22];
+			*layout[0] << new glv::Label("Randomize Grain Pointer");
+
+			slider[8]= new glv::Slider;
+			slider[8]->interval(drehbankKnob[8]->min(), drehbankKnob[8]->max());
+			*layout[0] << *slider[8];
+			*layout[0] << new glv::Label("RMS Gain");
+
+			slider[9]= new glv::Slider;
+			slider[9]->interval(drehbankKnob[9]->min(), drehbankKnob[9]->max());
+			*layout[0] << *slider[9];
+			*layout[0] << new glv::Label("RMS Threshold");
+
+			slider[25]= new glv::Slider;
+			slider[25]->interval(drehbankKnob[25]->min(), drehbankKnob[25]->max());
+			*layout[0] << *slider[25];
 			*layout[0] << new glv::Label("RMS Scaler");
+
+			slider[60]= new glv::Slider;
+			slider[60]->interval(drehbankKnob[60]->min(), drehbankKnob[60]->max());
+			*layout[0] << *slider[60];
+			*layout[0] << new glv::Label("Signal 0 Mix");
+
+			slider[61]= new glv::Slider;
+			slider[61]->interval(drehbankKnob[61]->min(), drehbankKnob[61]->max());
+			*layout[0] << *slider[61];
+			*layout[0] << new glv::Label("Signal 1 Mix");
+
+			slider[14]= new glv::Slider;
+			slider[14]->interval(drehbankKnob[14]->min(), drehbankKnob[14]->max());
+			*layout[0] << *slider[14];
+			*layout[0] << new glv::Label("Subwoofer Mix");
 
 			slider[15]= new glv::Slider;
 			slider[15]->interval(drehbankKnob[15]->min(), drehbankKnob[15]->max());
 			*layout[0] << *slider[15];
-			*layout[0] << new glv::Label(drehbankKnob[15]->getName());
+			*layout[0] << new glv::Label("Master Gain");
 
-			slider[60] = new glv::Slider;
-			slider[61] = new glv::Slider;
-			slider[62] = new glv::Slider;
-			slider[63] = new glv::Slider;
-			slider[60]->interval(drehbankKnob[60]->min(), drehbankKnob[60]->max());
-			slider[61]->interval(drehbankKnob[61]->min(), drehbankKnob[61]->max());
-			slider[62]->interval(drehbankKnob[62]->min(), drehbankKnob[62]->max());
-			slider[63]->interval(drehbankKnob[63]->min(), drehbankKnob[63]->max());
-			*layout[0] << *slider[60];
-			*layout[0] << new glv::Label("Signal 0");
-			*layout[0] << *slider[61];
-			*layout[0] << new glv::Label("Signal 1");
-			*layout[0] << *slider[62];
-			*layout[0] << new glv::Label("Signal 2");
-			*layout[0] << *slider[63];
-			*layout[0] << new glv::Label("Subwoofer");
+
+			// slider[29]= new glv::Slider;
+			// slider[29]->interval(drehbankKnob[29]->min(), drehbankKnob[29]->max());
+			// *layout[0] << *slider[29];
+			// *layout[0] << new glv::Label("RMS Scaler");
+			//
+			// slider[15]= new glv::Slider;
+			// slider[15]->interval(drehbankKnob[15]->min(), drehbankKnob[15]->max());
+			// *layout[0] << *slider[15];
+			// *layout[0] << new glv::Label(drehbankKnob[15]->getName());
+			//
+			//
+			// slider[60] = new glv::Slider;
+			// slider[61] = new glv::Slider;
+			// slider[62] = new glv::Slider;
+			// slider[63] = new glv::Slider;
+			// slider[60]->interval(drehbankKnob[60]->min(), drehbankKnob[60]->max());
+			// slider[61]->interval(drehbankKnob[61]->min(), drehbankKnob[61]->max());
+			// slider[62]->interval(drehbankKnob[62]->min(), drehbankKnob[62]->max());
+			// slider[63]->interval(drehbankKnob[63]->min(), drehbankKnob[63]->max());
+			// *layout[0] << *slider[60];
+			// *layout[0] << new glv::Label("Signal 0");
+			// *layout[0] << *slider[61];
+			// *layout[0] << new glv::Label("Signal 1");
+			// *layout[0] << *slider[62];
+			// *layout[0] << new glv::Label("Signal 2");
+			// *layout[0] << *slider[63];
+			// *layout[0] << new glv::Label("Subwoofer");
 			// layout[0]->arrange();
 			// *gui << *layout[0];
 
@@ -500,7 +601,7 @@ public:
 			*layout[1] << *button[0];
 			*layout[1] << *button[1];
 
-			layout[1]->pos(glv::Place::TR).anchor(0.72, 0);
+			layout[1]->pos(glv::Place::TR).anchor(0.787, 0);
 			layout[0]->arrange();
 			layout[1]->arrange();
 
@@ -683,21 +784,26 @@ public:
 			// g.draw(waveform1);
 
 			// GUI
+			// What the slider shows
 			slider[0]->setValue(g_N);
 			slider[1]->setValue(g_duration);
 			slider[2]->setValue(g_ramp);
 			slider[4]->setValue(g_offset);
 			slider[5]->setValue(g_delay);
 			slider[6]->setValue(g_stretch);
-			slider[12]->setValue(params.mRmsGain);
-			slider[13]->setValue(params.mRmsThreshold);
-			slider[29]->setValue(params.mRmsScaler);
+			slider[8]->setValue(params.mRmsGain);
+			slider[9]->setValue(params.mRmsThreshold);
+			slider[14]->setValue(sub_mix);
 			slider[15]->setValue(params.mMasterGain);
 			slider[19]->setValue(grani[0].getGrainPointer());
+			slider[25]->setValue(params.mRmsScaler);
 			slider[60]->setValue(signal_mix[0]);
 			slider[61]->setValue(signal_mix[1]);
-			slider[62]->setValue(signal_mix[2]);
-			slider[63]->setValue(sub_mix);
+
+			slider[17]->setValue(g_randomDur);
+			slider[20]->setValue(g_randomOffset);
+			slider[21]->setValue(g_randomDelay);
+			slider[22]->setValue(g_randomPointer);
 
 			button[0]->setValue(params.mOverwriteSample);
 			button[1]->setValue(params.mResetAll);
@@ -741,10 +847,12 @@ public:
 			// params.mRmsThreshold = Slider1->get();
 			// params.mMasterGain = Slider7->get();
 			//
+
+
 			signal_mix[0] = drehbankKnob[60]->get();
 			signal_mix[1] = drehbankKnob[61]->get();
-			signal_mix[2] = drehbankKnob[62]->get();
-			sub_mix = drehbankKnob[63]->get();
+			// signal_mix[2] = drehbankKnob[62]->get();
+			sub_mix = drehbankKnob[14]->get();
 			// // Granulation parameters
 			// g_N 				= Slider16->get();
 			// g_duration 	= Slider17->get();
@@ -754,10 +862,24 @@ public:
 			// g_stretch 	= Slider21->get();
 			// g_random 		= Slider22->get();
 
-			params.mRmsGain = drehbankKnob[12]->get();
-			params.mRmsThreshold = drehbankKnob[13]->get();
-			params.mRmsScaler = drehbankKnob[29]->get();
+			params.mRmsGain = drehbankKnob[8]->get();
+			params.mRmsThreshold = drehbankKnob[9]->get();
+			params.mRmsScaler = drehbankKnob[25]->get();
 			params.mMasterGain = drehbankKnob[15]->get();
+
+
+			if (drehbankKnob[46]->get() != 0.0) {
+				params.mOverwriteSample = true;
+			} else if (drehbankKnob[46]->get() == 0.0) {
+				params.mOverwriteSample = false;
+			}
+
+			if (drehbankKnob[47]->get() != 0.0) {
+				params.mResetAll = true;
+			} else if (drehbankKnob[47]->get() == 0.0) {
+				params.mResetAll = false;
+			}
+
 
 			// Granulation parameters
 			// g_N 				= Slider16->get();
@@ -966,13 +1088,13 @@ public:
 
 		virtual void onKeyDown(const Keyboard& k) override {
 			// k.print();
-			if (k.key() == 8) {
-				params.mOverwriteSample = !params.mOverwriteSample;
-			} else if (k.key() == 92){
-				params.mResetAll = true;
-				// params.mResetAll = !params.mResetAll;
-				// params.mResetAll = false;
-			}
+			// if (k.key() == 8) {
+			// 	params.mOverwriteSample = !params.mOverwriteSample;
+			// } else if (k.key() == 92){
+			// 	params.mResetAll = true;
+			// 	// params.mResetAll = !params.mResetAll;
+			// 	// params.mResetAll = false;
+			// }
 
 			if (k.key() == '1') {
 				params.mCarrierFile = 0;
@@ -1097,6 +1219,7 @@ public:
 		// Parameter *Slider21;
 		// Parameter *Slider22;
 		// Parameter *recButton;
+
 		// Parameter *track_backward;
 		// Parameter *track_forward;
 		// Parameter *marker_backward;
@@ -1119,5 +1242,27 @@ public:
 
 		Angkasa app;
 
+		cout 	<< "\nControls (Doepfer Drehbank): " << endl
+					<< "Knob[0]: Grain Voices" << endl
+					<< "Knob[1]: Grain Duration" << endl
+					<< "Knob[2]: Grain Ramp" << endl
+					<< "Knob[4]: Grain Offset" << endl
+					<< "Knob[5]: Grain Delay" << endl
+					<< "Knob[6]: Grain Stretch" << endl
+					<< "Knob[8]: RMS Gain" << endl
+					<< "Knob[9]: RMS Threshold" << endl
+					<< "Knob[25]: RMS Scaler" << endl
+					<< "Knob[14]: Subwoofer Mix" << endl
+					<< "Knob[15]: Master Gain" << endl
+					<< "Knob[17]: Grain Randomness_dur" << endl
+					<< "Knob[20]: Grain Randomness_offset" << endl
+					<< "Knob[21]: Grain Randomness_delay" << endl
+					<< "Knob[22]: Grain Randomness_pointer" << endl
+					<< "Knob[46]: Overwrite Sample" << endl
+					<< "Knob[47]: RESET POINTER" << endl
+					<< "Knob[60]: Signal Mix 0" << endl
+					<< "Knob[61]: Signal Mix 1" << endl;
+
 		app.start();
+
 	}
